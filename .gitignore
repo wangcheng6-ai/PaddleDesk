@@ -3,3 +3,6 @@ node_modules/
 target/
 dist/
 *.local
+
+# Spike 0 实测材料，含真实 token/敏感样张，永不入库
+/test/

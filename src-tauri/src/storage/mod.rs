@@ -343,8 +343,9 @@ mod tests {
     #[test]
     fn usage_accumulates_and_settings_roundtrip() {
         let (_d, s) = tmp_store();
-        s.add_usage("2026-07-10", ServiceId::Vl16, 5).unwrap();
-        s.add_usage("2026-07-10", ServiceId::Vl16, 3).unwrap();
+        let today = chrono::Local::now().date_naive().to_string();
+        s.add_usage(&today, ServiceId::Vl16, 5).unwrap();
+        s.add_usage(&today, ServiceId::Vl16, 3).unwrap();
         assert_eq!(s.usage_since(1).unwrap()[0].pages, 8);
         s.set_setting("proxy_mode", "direct").unwrap();
         assert_eq!(s.get_setting("proxy_mode").unwrap().unwrap(), "direct");

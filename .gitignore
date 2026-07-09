@@ -7,6 +7,9 @@ dist/
 # Spike 0 实测材料，含真实 token/敏感样张，永不入库
 /test/
 
+# CodeGraph 本地索引（生成物）
+.codegraph/
+
 # Logs
 logs
 *.log

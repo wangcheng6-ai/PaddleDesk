@@ -17,6 +17,9 @@ use crate::{
 
 const MAX_RETRIES: u32 = 3;
 
+#[cfg(test)]
+type TestProbe = (std::sync::mpsc::SyncSender<()>, Arc<std::sync::Barrier>);
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum QueueEvent {
@@ -45,6 +48,10 @@ pub struct Queue {
     events: mpsc::UnboundedSender<QueueEvent>,
     retry_base: Duration,
     active: Mutex<HashSet<String>>,
+    #[cfg(test)]
+    event_probe: Mutex<Option<TestProbe>>,
+    #[cfg(test)]
+    claim_probe: Mutex<Option<TestProbe>>,
 }
 
 impl Queue {
@@ -62,6 +69,10 @@ impl Queue {
             events,
             retry_base,
             active: Mutex::new(HashSet::new()),
+            #[cfg(test)]
+            event_probe: Mutex::new(None),
+            #[cfg(test)]
+            claim_probe: Mutex::new(None),
         })
     }
 
@@ -77,33 +88,49 @@ impl Queue {
     }
 
     pub fn resume(self: &Arc<Self>) {
-        let tasks = self
-            .lock_store()
-            .and_then(|store| store.unfinished_tasks().map_err(storage_error));
-        let Ok(tasks) = tasks else {
+        let Ok(tasks) = self.claim_unfinished() else {
             return;
         };
         for task in tasks {
-            self.spawn(NewTask {
-                id: task.id,
-                service: task.service,
-                input_path: task.input_path,
-                options_json: task.options_json,
-            });
+            self.spawn_registered(task);
         }
     }
 
+    fn claim_unfinished(&self) -> Result<Vec<NewTask>, OcrError> {
+        let mut active = self
+            .active
+            .lock()
+            .map_err(|_| storage_error("queue state lock poisoned"))?;
+        let store = self.lock_store()?;
+        let tasks = store.unfinished_tasks().map_err(storage_error)?;
+        #[cfg(test)]
+        hit_probe(&self.claim_probe);
+        Ok(tasks
+            .into_iter()
+            .filter_map(|task| {
+                active.insert(task.id.clone()).then_some(NewTask {
+                    id: task.id,
+                    service: task.service,
+                    input_path: task.input_path,
+                    options_json: task.options_json,
+                })
+            })
+            .collect())
+    }
+
     pub fn cancel(&self, id: &str) {
-        let canceled = self
-            .lock_store()
-            .and_then(|store| store.cancel_task(id).map_err(storage_error));
-        match canceled {
-            Ok(true) => {
-                let _ = self.events.send(QueueEvent::Canceled { id: id.into() });
-            }
-            Ok(false) => {}
-            Err(error) => self.emit_failed(id, error),
-        }
+        let error = match self.lock_store() {
+            Ok(store) => match store.cancel_task(id) {
+                Ok(true) => {
+                    self.emit(QueueEvent::Canceled { id: id.into() });
+                    return;
+                }
+                Ok(false) => return,
+                Err(error) => storage_error(error),
+            },
+            Err(error) => error,
+        };
+        self.emit_failed(id, error);
     }
 
     fn spawn(self: &Arc<Self>, task: NewTask) {
@@ -119,6 +146,10 @@ impl Queue {
                 return;
             }
         }
+        self.spawn_registered(task);
+    }
+
+    fn spawn_registered(self: &Arc<Self>, task: NewTask) {
         let queue = Arc::clone(self);
         tokio::spawn(async move { queue.run(task).await });
     }
@@ -189,15 +220,11 @@ impl Queue {
         let store = Arc::clone(&self.store);
         let events = self.events.clone();
         Box::new(move |page, total| {
-            let updated = store
-                .lock()
-                .map_err(|_| storage_error("store lock poisoned"))
-                .and_then(|store| {
-                    store
-                        .update_status_if_active(&id, "processing", Some((page, total)), None)
-                        .map_err(storage_error)
-                });
-            match updated {
+            let Ok(store) = store.lock() else {
+                set_progress_error(&progress_error, storage_error("store lock poisoned"));
+                return;
+            };
+            match store.update_status_if_active(&id, "processing", Some((page, total)), None) {
                 Ok(true) => {
                     let _ = events.send(QueueEvent::Progress {
                         id: id.clone(),
@@ -207,18 +234,18 @@ impl Queue {
                     });
                 }
                 Ok(false) => {}
-                Err(error) => set_progress_error(&progress_error, error),
+                Err(error) => set_progress_error(&progress_error, storage_error(error)),
             }
         })
     }
 
     fn progress(&self, id: &str, stage: &str, page: u32, total: u32) -> Result<bool, OcrError> {
-        let updated = self
-            .lock_store()?
+        let store = self.lock_store()?;
+        let updated = store
             .update_status_if_active(id, stage, Some((page, total)), None)
             .map_err(storage_error)?;
         if updated {
-            let _ = self.events.send(QueueEvent::Progress {
+            self.emit(QueueEvent::Progress {
                 id: id.into(),
                 stage: stage.into(),
                 page,
@@ -234,33 +261,46 @@ impl Queue {
             .and_then(|name| name.to_str())
             .unwrap_or(&task.input_path);
         let today = Local::now().date_naive().to_string();
-        let completed = self.lock_store().and_then(|store| {
-            store
-                .complete_task(&task.id, file_name, result, &today, task.service)
-                .map_err(storage_error)
-        });
-        match completed {
-            Ok(true) => {
-                let _ = self.events.send(QueueEvent::Done {
-                    id: task.id.clone(),
-                });
+        let error = match self.lock_store() {
+            Ok(store) => {
+                match store.complete_task(&task.id, file_name, result, &today, task.service) {
+                    Ok(true) => {
+                        self.emit(QueueEvent::Done {
+                            id: task.id.clone(),
+                        });
+                        return;
+                    }
+                    Ok(false) => return,
+                    Err(error) => storage_error(error),
+                }
             }
-            Ok(false) => {}
-            Err(error) => self.fail(&task.id, error),
-        }
+            Err(error) => error,
+        };
+        self.fail(&task.id, error);
     }
 
     fn fail(&self, id: &str, error: OcrError) {
-        let persisted = self.lock_store().and_then(|store| {
-            store
-                .update_status_if_active(id, "failed", None, Some(&error))
-                .map_err(storage_error)
-        });
-        match persisted {
-            Ok(true) => self.emit_failed(id, error),
-            Ok(false) => {}
-            Err(storage) => self.emit_failed(id, storage),
-        }
+        let error = match self.lock_store() {
+            Ok(store) => match store.update_status_if_active(id, "failed", None, Some(&error)) {
+                Ok(true) => {
+                    self.emit(QueueEvent::Failed {
+                        id: id.into(),
+                        error,
+                    });
+                    return;
+                }
+                Ok(false) => return,
+                Err(error) => storage_error(error),
+            },
+            Err(error) => error,
+        };
+        self.emit_failed(id, error);
+    }
+
+    fn emit(&self, event: QueueEvent) {
+        #[cfg(test)]
+        hit_probe(&self.event_probe);
+        let _ = self.events.send(event);
     }
 
     fn lock_store(&self) -> Result<std::sync::MutexGuard<'_, Store>, OcrError> {
@@ -270,10 +310,18 @@ impl Queue {
     }
 
     fn emit_failed(&self, id: &str, error: OcrError) {
-        let _ = self.events.send(QueueEvent::Failed {
+        self.emit(QueueEvent::Failed {
             id: id.into(),
             error,
         });
+    }
+}
+
+#[cfg(test)]
+fn hit_probe(probe: &Mutex<Option<TestProbe>>) {
+    if let Some((entered, release)) = probe.lock().unwrap().take() {
+        entered.send(()).unwrap();
+        release.wait();
     }
 }
 
@@ -303,7 +351,7 @@ mod tests {
         collections::HashMap,
         sync::{
             atomic::{AtomicU32, Ordering},
-            Arc, Mutex,
+            Arc, Barrier, Mutex, TryLockError,
         },
         time::Duration,
     };
@@ -385,6 +433,24 @@ mod tests {
     struct TrackingOcr {
         active: Arc<AtomicU32>,
         max_active: Arc<AtomicU32>,
+    }
+
+    struct StalledOcr;
+
+    #[async_trait::async_trait]
+    impl OcrService for StalledOcr {
+        fn id(&self) -> ServiceId {
+            ServiceId::Vl16
+        }
+
+        async fn parse(
+            &self,
+            _input: &InputDoc,
+            _options: &ParseOptions,
+            _progress: ProgressFn,
+        ) -> Result<RecognitionResult, OcrError> {
+            std::future::pending().await
+        }
     }
 
     #[async_trait::async_trait]
@@ -557,6 +623,40 @@ mod tests {
         assert_eq!(tasks[0].id, "t1");
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn canceled_is_last_event_after_accepted_progress() {
+        let (q, _store, mut rx) = setup_service(Arc::new(StalledOcr), 1).await;
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+        let release = Arc::new(Barrier::new(2));
+        *q.event_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+        q.submit(NewTask {
+            id: "t1".into(),
+            service: ServiceId::Vl16,
+            input_path: "a.png".into(),
+            options_json: "{}".into(),
+        });
+        entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+        let store_locked = matches!(q.store.try_lock(), Err(TryLockError::WouldBlock));
+
+        let ready = Arc::new(Barrier::new(2));
+        let cancel_queue = q.clone();
+        let cancel_ready = ready.clone();
+        let cancel = std::thread::spawn(move || {
+            cancel_ready.wait();
+            cancel_queue.cancel("t1");
+        });
+        ready.wait();
+        release.wait();
+        cancel.join().unwrap();
+        assert!(store_locked, "Store lock was released before event send");
+
+        match terminal(&mut rx).await {
+            QueueEvent::Canceled { id } => assert_eq!(id, "t1"),
+            _ => panic!("task should be canceled"),
+        }
+        assert!(rx.try_recv().is_err(), "event arrived after cancellation");
+    }
+
     #[tokio::test]
     async fn cancellation_cannot_be_overwritten_by_running_worker() {
         let (q, store, mut rx) = setup(MockOcr::new(), 1).await;
@@ -602,6 +702,44 @@ mod tests {
         let usage = store.lock().unwrap().usage_since(1).unwrap();
         assert_eq!(usage.len(), 1);
         assert_eq!(usage[0].pages, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn resume_claim_waits_for_active_cleanup_before_snapshot() {
+        let service = MockOcr::new();
+        let service_probe = service.clone();
+        let (q, store, mut rx) = setup(service, 1).await;
+        store
+            .lock()
+            .unwrap()
+            .insert_task(&NewTask {
+                id: "old".into(),
+                service: ServiceId::Vl16,
+                input_path: "old.png".into(),
+                options_json: "{}".into(),
+            })
+            .unwrap();
+        q.active.lock().unwrap().insert("old".into());
+
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+        let release = Arc::new(Barrier::new(2));
+        *q.claim_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+        let claim_queue = q.clone();
+        let claim = std::thread::spawn(move || claim_queue.resume());
+        entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+        let active_locked = matches!(q.active.try_lock(), Err(TryLockError::WouldBlock));
+
+        let cleanup_queue = q.clone();
+        let cleanup = std::thread::spawn(move || {
+            cleanup_queue.active.lock().unwrap().remove("old");
+        });
+        release.wait();
+
+        claim.join().unwrap();
+        cleanup.join().unwrap();
+        assert!(active_locked, "active lock was released during claim");
+        assert_eq!(service_probe.call_count(), 0);
+        assert!(rx.try_recv().is_err(), "resume started a duplicate worker");
     }
 
     #[tokio::test]

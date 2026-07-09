@@ -114,6 +114,47 @@ impl Store {
         Ok(())
     }
 
+    pub fn update_status_if_active(
+        &self,
+        id: &str,
+        status: &str,
+        progress: Option<(u32, u32)>,
+        error: Option<&OcrError>,
+    ) -> Result<bool> {
+        let (progress_page, total_pages) = progress
+            .map(|(page, total)| (Some(i64::from(page)), Some(i64::from(total))))
+            .unwrap_or((None, None));
+        let (error_kind, error_msg) = error
+            .map(error_fields)
+            .map(|(kind, message)| (Some(kind), Some(message)))
+            .unwrap_or((None, None));
+        let changed = self.0.execute(
+            "UPDATE tasks SET status = ?1,
+             progress_page = COALESCE(?2, progress_page),
+             total_pages = COALESCE(?3, total_pages),
+             error_kind = ?4, error_msg = ?5
+             WHERE id = ?6 AND status NOT IN ('done','canceled')",
+            params![
+                status,
+                progress_page,
+                total_pages,
+                error_kind,
+                error_msg,
+                id
+            ],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn cancel_task(&self, id: &str) -> Result<bool> {
+        let changed = self.0.execute(
+            "UPDATE tasks SET status = 'canceled', error_kind = NULL, error_msg = NULL
+             WHERE id = ?1 AND status NOT IN ('done','canceled')",
+            [id],
+        )?;
+        Ok(changed == 1)
+    }
+
     pub fn list_tasks(&self, status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
         let sql = format!("SELECT {TASK_COLUMNS} FROM tasks");
         match status_filter {
@@ -135,22 +176,34 @@ impl Store {
         file_name: &str,
         result: &RecognitionResult,
     ) -> Result<()> {
-        let pages_json = serde_json::to_string(&result.pages)?;
         let transaction = self.0.unchecked_transaction()?;
-        transaction.execute(
-            "INSERT INTO results(task_id, markdown, blocks_json, page_count)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(task_id) DO UPDATE SET markdown = excluded.markdown,
-             blocks_json = excluded.blocks_json, page_count = excluded.page_count",
-            params![task_id, result.markdown, pages_json, result.page_count],
-        )?;
-        transaction.execute("DELETE FROM history_fts WHERE task_id = ?1", [task_id])?;
-        transaction.execute(
-            "INSERT INTO history_fts(task_id, file_name, markdown) VALUES (?1, ?2, ?3)",
-            params![task_id, file_name, result.markdown],
-        )?;
+        write_result(&transaction, task_id, file_name, result)?;
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn complete_task(
+        &self,
+        task_id: &str,
+        file_name: &str,
+        result: &RecognitionResult,
+        date: &str,
+        service: ServiceId,
+    ) -> Result<bool> {
+        let transaction = self.0.unchecked_transaction()?;
+        let changed = transaction.execute(
+            "UPDATE tasks SET status = 'done', error_kind = NULL, error_msg = NULL
+             WHERE id = ?1 AND status NOT IN ('done','canceled')",
+            [task_id],
+        )?;
+        if changed == 0 {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        write_result(&transaction, task_id, file_name, result)?;
+        write_usage(&transaction, date, service, result.page_count)?;
+        transaction.commit()?;
+        Ok(true)
     }
 
     pub fn get_result(&self, task_id: &str) -> Result<Option<RecognitionResult>> {
@@ -193,12 +246,7 @@ impl Store {
     }
 
     pub fn add_usage(&self, date: &str, service: ServiceId, pages: u32) -> Result<()> {
-        self.0.execute(
-            "INSERT INTO usage(date, service, pages) VALUES (?1, ?2, ?3)
-             ON CONFLICT(date, service) DO UPDATE SET pages = pages + excluded.pages",
-            params![date, service_name(service), pages],
-        )?;
-        Ok(())
+        write_usage(&self.0, date, service, pages)
     }
 
     pub fn usage_since(&self, days: u32) -> Result<Vec<UsageRow>> {
@@ -234,6 +282,37 @@ impl Store {
         let rows = statement.query_map(params, task_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+fn write_result(
+    connection: &Connection,
+    task_id: &str,
+    file_name: &str,
+    result: &RecognitionResult,
+) -> Result<()> {
+    let pages_json = serde_json::to_string(&result.pages)?;
+    connection.execute(
+        "INSERT INTO results(task_id, markdown, blocks_json, page_count)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(task_id) DO UPDATE SET markdown = excluded.markdown,
+         blocks_json = excluded.blocks_json, page_count = excluded.page_count",
+        params![task_id, result.markdown, pages_json, result.page_count],
+    )?;
+    connection.execute("DELETE FROM history_fts WHERE task_id = ?1", [task_id])?;
+    connection.execute(
+        "INSERT INTO history_fts(task_id, file_name, markdown) VALUES (?1, ?2, ?3)",
+        params![task_id, file_name, result.markdown],
+    )?;
+    Ok(())
+}
+
+fn write_usage(connection: &Connection, date: &str, service: ServiceId, pages: u32) -> Result<()> {
+    connection.execute(
+        "INSERT INTO usage(date, service, pages) VALUES (?1, ?2, ?3)
+         ON CONFLICT(date, service) DO UPDATE SET pages = pages + excluded.pages",
+        params![date, service_name(service), pages],
+    )?;
+    Ok(())
 }
 
 fn service_name(service: ServiceId) -> &'static str {
@@ -293,8 +372,20 @@ fn error_fields(error: &OcrError) -> (&'static str, String) {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+        time::Duration as StdDuration,
+    };
+
+    use tokio::{sync::mpsc, time::timeout};
+
     use super::*;
-    use crate::model::{RecognitionResult, ServiceId};
+    use crate::{
+        api::{mock::MockOcr, OcrService},
+        model::{OcrError, RecognitionResult, ServiceId},
+        queue::{Queue, QueueEvent},
+    };
 
     fn tmp_store() -> (tempfile::TempDir, Store) {
         let d = tempfile::tempdir().unwrap();
@@ -349,5 +440,76 @@ mod tests {
         assert_eq!(s.usage_since(1).unwrap()[0].pages, 8);
         s.set_setting("proxy_mode", "direct").unwrap();
         assert_eq!(s.get_setting("proxy_mode").unwrap().unwrap(), "direct");
+    }
+
+    #[tokio::test]
+    async fn queue_storage_failure_emits_failed_without_partial_completion() {
+        let (_d, s) = tmp_store();
+        s.0.execute_batch(
+            "CREATE TRIGGER fail_usage BEFORE INSERT ON usage
+             BEGIN SELECT RAISE(ABORT, 'forced usage failure'); END;",
+        )
+        .unwrap();
+        let store = Arc::new(Mutex::new(s));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut services: HashMap<ServiceId, Arc<dyn OcrService>> = HashMap::new();
+        services.insert(ServiceId::Vl16, Arc::new(MockOcr::new()));
+        let queue = Queue::new(store.clone(), services, 1, tx, StdDuration::from_millis(1));
+        queue.submit(NewTask {
+            id: "broken".into(),
+            service: ServiceId::Vl16,
+            input_path: "a.png".into(),
+            options_json: "{}".into(),
+        });
+        let error = timeout(StdDuration::from_secs(1), async {
+            loop {
+                if let QueueEvent::Failed { error, .. } =
+                    rx.recv().await.expect("queue event channel closed")
+                {
+                    return error;
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for storage failure");
+        assert!(matches!(error, OcrError::Parse(message) if message.contains("forced usage")));
+        let store = store.lock().unwrap();
+        assert_eq!(store.list_tasks(Some("failed")).unwrap().len(), 1);
+        assert!(store.get_result("broken").unwrap().is_none());
+        assert!(store.usage_since(1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn complete_task_rolls_back_status_result_and_usage_together() {
+        let (_d, s) = tmp_store();
+        s.insert_task(&NewTask {
+            id: "atomic".into(),
+            service: ServiceId::Vl16,
+            input_path: "a.png".into(),
+            options_json: "{}".into(),
+        })
+        .unwrap();
+        s.0.execute_batch(
+            "CREATE TRIGGER fail_usage BEFORE INSERT ON usage
+             BEGIN SELECT RAISE(ABORT, 'forced usage failure'); END;",
+        )
+        .unwrap();
+        let result = RecognitionResult {
+            markdown: "atomic result".into(),
+            page_count: 1,
+            pages: vec![],
+        };
+        assert!(s
+            .complete_task(
+                "atomic",
+                "a.png",
+                &result,
+                &Local::now().date_naive().to_string(),
+                ServiceId::Vl16,
+            )
+            .is_err());
+        assert_eq!(s.list_tasks(None).unwrap()[0].status, "pending");
+        assert!(s.get_result("atomic").unwrap().is_none());
+        assert!(s.usage_since(1).unwrap().is_empty());
     }
 }

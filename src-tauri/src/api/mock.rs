@@ -1,27 +1,37 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
+};
 
 use super::*;
 use crate::model::*;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct MockOcr {
-    remaining_failures: AtomicU32,
+    remaining_failures: Arc<AtomicU32>,
     err: Option<OcrError>,
+    calls: Arc<AtomicU32>,
 }
 
 impl MockOcr {
     pub fn new() -> Self {
         Self {
-            remaining_failures: 0.into(),
+            remaining_failures: Arc::new(AtomicU32::new(0)),
             err: None,
+            calls: Arc::default(),
         }
     }
 
     pub fn failing(times: u32, err: OcrError) -> Self {
         Self {
-            remaining_failures: times.into(),
+            remaining_failures: Arc::new(AtomicU32::new(times)),
             err: Some(err),
+            calls: Arc::default(),
         }
+    }
+
+    pub fn call_count(&self) -> u32 {
+        self.calls.load(Ordering::SeqCst)
     }
 
     fn canned() -> RecognitionResult {
@@ -54,6 +64,7 @@ impl OcrService for MockOcr {
         _o: &ParseOptions,
         progress: ProgressFn,
     ) -> Result<RecognitionResult, OcrError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         if self
             .remaining_failures

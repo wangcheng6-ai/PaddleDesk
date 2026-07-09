@@ -1,5 +1,6 @@
 pub mod api;
 pub mod model;
+pub mod queue;
 pub mod storage;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/

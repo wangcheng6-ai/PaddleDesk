@@ -108,6 +108,9 @@ export const retryTask = (id: string) => invoke<void>("retry_task", { id });
 export const getResult = (taskId: string) =>
   invoke<RecognitionResult | null>("get_result", { taskId });
 
+export const getTaskSource = (taskId: string) =>
+  invoke<number[]>("get_task_source", { taskId });
+
 export const exportResult = (
   taskId: string,
   format: ExportFormat,

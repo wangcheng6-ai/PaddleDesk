@@ -19,6 +19,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "i18next": "^26.3.6",
     "katex": "^0.17.0",
+    "pdfjs-dist": "^5.7.284",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-i18next": "^17.0.9",

@@ -106,6 +106,13 @@ fn lock_store(state: &AppState) -> Result<MutexGuard<'_, Store>, String> {
         .map_err(|_| "store lock poisoned".to_string())
 }
 
+fn task_source_path(store: &Store, task_id: &str) -> Result<String, String> {
+    store
+        .task_input_path(task_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "task not found".to_string())
+}
+
 fn submit_image_task(
     path: std::path::PathBuf,
     service: ServiceId,
@@ -192,6 +199,15 @@ pub fn get_result(
     lock_store(&state)?
         .get_result(&task_id)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_task_source(task_id: String, state: State<'_, AppState>) -> Result<Vec<u8>, String> {
+    let path = {
+        let store = lock_store(&state)?;
+        task_source_path(&store, &task_id)?
+    };
+    std::fs::read(path).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -410,6 +426,30 @@ mod tests {
         ] {
             assert!(validate_setting_keys(&invalid).is_err());
         }
+    }
+
+    #[test]
+    fn task_source_is_resolved_from_sqlite_instead_of_a_frontend_path() {
+        let (directory, store, _queue, _events) = test_queue(true);
+        let source = directory.path().join("known.pdf");
+        std::fs::write(&source, b"%PDF-test").unwrap();
+        store
+            .lock()
+            .unwrap()
+            .insert_task(
+                &NewTask {
+                    id: "known".into(),
+                    service: ServiceId::Vl16,
+                    input_path: source.to_string_lossy().into_owned(),
+                    options_json: "{}".into(),
+                },
+                true,
+            )
+            .unwrap();
+
+        let path = task_source_path(&store.lock().unwrap(), "known").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"%PDF-test");
+        assert!(task_source_path(&store.lock().unwrap(), "unknown").is_err());
     }
 
     #[tokio::test]

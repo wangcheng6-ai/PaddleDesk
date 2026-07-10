@@ -1,21 +1,30 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { scaleBbox } from "../lib/bbox";
 import type { RecognitionResult } from "../lib/ipc";
+import { PdfPage } from "./PdfPage";
 
 interface OriginalPaneProps {
   inputPath: string;
   result: RecognitionResult;
+  sourceBytes: Uint8Array | null;
 }
 
-export function OriginalPane({ inputPath, result }: OriginalPaneProps) {
+export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPaneProps) {
   const { t } = useTranslation();
   const [pageIndex, setPageIndex] = useState(0);
   const [showBboxes, setShowBboxes] = useState(true);
+  const [pdfSize, setPdfSize] = useState<{ width: number; height: number } | null>(null);
+  const [pdfFailed, setPdfFailed] = useState(false);
   const page = result.pages[pageIndex];
   const isPdf = /\.pdf$/i.test(inputPath);
+  const onPdfSize = useCallback((size: { width: number; height: number }) => {
+    setPdfSize(size);
+    setPdfFailed(false);
+  }, []);
+  const onPdfError = useCallback(() => setPdfFailed(true), []);
 
   return (
     <section className="viewer-panel original-pane" aria-label={t("viewer.original")}>
@@ -33,12 +42,21 @@ export function OriginalPane({ inputPath, result }: OriginalPaneProps) {
       </div>
 
       <div className="original-stage">
-        <div className="original-image-frame">
+        <div
+          className="original-image-frame"
+          style={pdfSize ? { aspectRatio: `${pdfSize.width} / ${pdfSize.height}` } : undefined}
+        >
           {isPdf ? (
-            <div className="pdf-placeholder">
-              <span aria-hidden="true">PDF</span>
-              <strong>{t("viewer.pdfPreview")}</strong>
-            </div>
+            sourceBytes ? (
+              <PdfPage
+                bytes={sourceBytes}
+                pageNumber={pageIndex + 1}
+                onSize={onPdfSize}
+                onError={onPdfError}
+              />
+            ) : (
+              <div className="pdf-placeholder">{t("common.loading")}</div>
+            )
           ) : (
             <img src={convertFileSrc(inputPath)} alt={t("viewer.originalAlt")} />
           )}
@@ -67,6 +85,7 @@ export function OriginalPane({ inputPath, result }: OriginalPaneProps) {
             </div>
           ) : null}
         </div>
+        {pdfFailed ? <p role="alert">{t("viewer.pdfLoadFailed")}</p> : null}
       </div>
 
       {(isPdf || result.pages.length > 1) && (

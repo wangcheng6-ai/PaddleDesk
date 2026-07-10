@@ -685,6 +685,12 @@ button:focus-visible {
   height: auto;
 }
 
+.pdf-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .pdf-placeholder {
   display: grid;
   min-height: 430px;

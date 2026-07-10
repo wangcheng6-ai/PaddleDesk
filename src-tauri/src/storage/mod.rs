@@ -307,6 +307,17 @@ impl Store {
             .transpose()
     }
 
+    pub(crate) fn task_input_path(&self, task_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT input_path FROM tasks WHERE id = ?1",
+                [task_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
     pub fn search_history(&self, query: &str) -> Result<Vec<HistoryRow>> {
         let mut statement = self.0.prepare(
             "SELECT history_fts.task_id, history_fts.file_name,

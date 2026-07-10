@@ -7,6 +7,7 @@ import { ResultPane } from "../components/ResultPane";
 import {
   exportResult,
   getResult,
+  getTaskSource,
   type ExportFormat,
   type RecognitionResult,
 } from "../lib/ipc";
@@ -26,6 +27,7 @@ export function Viewer() {
     state.tasks.find(({ id }) => id === state.selectedTaskId),
   );
   const [result, setResult] = useState<RecognitionResult | null>(null);
+  const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
@@ -35,10 +37,13 @@ export function Viewer() {
     let active = true;
     setLoading(true);
     setLoadFailed(false);
-    void getResult(taskId).then(
-      (next) => {
+    setSourceBytes(null);
+    const isPdf = /\.pdf$/i.test(task?.input_path ?? "");
+    void Promise.all([getResult(taskId), isPdf ? getTaskSource(taskId) : null]).then(
+      ([next, bytes]) => {
         if (active) {
           setResult(next);
+          setSourceBytes(bytes ? Uint8Array.from(bytes) : null);
           setLoading(false);
         }
       },
@@ -52,7 +57,7 @@ export function Viewer() {
     return () => {
       active = false;
     };
-  }, [taskId]);
+  }, [task?.input_path, taskId]);
 
   const runExport = async (format: ExportFormat, blockId?: string) => {
     if (!taskId) return;
@@ -89,7 +94,7 @@ export function Viewer() {
       </div>
       {exportFailed ? <p role="alert">{t("viewer.exportFailed")}</p> : null}
       <div className="viewer-grid">
-        <OriginalPane inputPath={task?.input_path ?? ""} result={result} />
+        <OriginalPane inputPath={task?.input_path ?? ""} result={result} sourceBytes={sourceBytes} />
         <ResultPane result={result} onExport={runExport} />
       </div>
     </div>

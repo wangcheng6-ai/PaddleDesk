@@ -353,6 +353,7 @@ pub fn run() {
             commands::cancel_task,
             commands::retry_task,
             commands::get_result,
+            commands::get_task_source,
             commands::export_result,
             commands::search_history,
             commands::get_usage,

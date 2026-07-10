@@ -1,0 +1,272 @@
+{
+  "app": {
+    "mark": "P",
+    "name": "PaddleDesk"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "home": "Home",
+    "viewer": "Result Viewer",
+    "queue": "Task Queue",
+    "history": "History",
+    "usage": "Usage",
+    "settings": "Settings"
+  },
+  "services": {
+    "selectorLabel": "Recognition service",
+    "vl16": "PaddleOCR-VL-1.6",
+    "ppOcrV6": "PP-OCRv6",
+    "structureV3": "PP-StructureV3"
+  },
+  "usage": {
+    "today": "Today's usage",
+    "summary": "{{used}} / {{quota}} pages",
+    "meterLabel": "{{used}} of {{quota}} pages used",
+    "byService": "Usage by service",
+    "serviceBreakdown": "Service breakdown",
+    "lastSevenDays": "Last 7 days",
+    "pages": "{{count}} pages",
+    "loadFailed": "Usage data could not be loaded."
+  },
+  "actions": {
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "chooseFiles": "Choose files",
+    "capture": "Capture text",
+    "captureHint": "Capture text (Ctrl+Alt+S)",
+    "dismiss": "Dismiss",
+    "back": "Back"
+  },
+  "common": {
+    "loading": "Loading…"
+  },
+  "home": {
+    "dropTitle": "Drop images or PDFs to start recognition",
+    "dropDescription": "Supports png, jpg, jpeg, webp, and pdf. Multiple files are queued automatically.",
+    "cloudDisclosure": "Files are uploaded to Baidu Cloud for recognition.",
+    "supportedFiles": "Supported files",
+    "submitFailed": "Files could not be added.",
+    "postCreateRefreshFailed": "Tasks were created, but the list could not be refreshed. Check the Task Queue.",
+    "dropRegistrationFailed": "File drops could not be monitored.",
+    "selectService": "Choose a service",
+    "serviceHelp": "Select an official cloud model for the task",
+    "recent": "Recent tasks",
+    "recentHint": "Double-click to open the result",
+    "loadFailed": "Recent tasks could not be loaded.",
+    "empty": "No tasks yet. Choose or drop files to get started.",
+    "serviceCards": {
+      "vl16": {
+        "tag": "Recommended",
+        "description": "Multimodal parsing for complex documents with structured Markdown output.",
+        "fit": "Papers, scanned books, complex layouts, and handwriting"
+      },
+      "ppOcrV6": {
+        "tag": "Fastest",
+        "description": "Fast scene-text recognition with broad language support.",
+        "fit": "Screenshots, photos, street scenes, and identity documents"
+      },
+      "structureV3": {
+        "tag": "Precise coordinates",
+        "description": "Preserves layout structure and precise coordinates for structured extraction.",
+        "fit": "Table extraction, searchable PDFs, and layout reconstruction"
+      }
+    }
+  },
+  "queue": {
+    "summary": "{{active}} active · {{failed}} failed",
+    "loadFailed": "The task queue could not be loaded.",
+    "actionFailed": "The action failed. Please try again.",
+    "empty": "The queue is empty.",
+    "persistenceNote": "Tasks are kept on this device and resume after restart."
+  },
+  "viewer": {
+    "original": "Original",
+    "originalAlt": "Original document for review",
+    "result": "Recognition result",
+    "resultTabs": "Result format",
+    "showBboxes": "Show recognition regions",
+    "pdfPreview": "PDF preview",
+    "pdfLoadFailed": "This PDF page could not be rendered.",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "page": "Page {{page}} of {{total}}",
+    "noSelection": "Select a completed task from Home or the Task Queue.",
+    "noResult": "This task does not have a result yet.",
+    "loadFailed": "The recognition result could not be loaded.",
+    "exportFailed": "The export failed. Please try again.",
+    "copyLatex": "Copy LaTeX",
+    "tabs": {
+      "markdown": "Markdown",
+      "json": "JSON",
+      "text": "Plain text"
+    },
+    "export": {
+      "md": "Export Markdown",
+      "json": "Export JSON",
+      "txt": "Export text",
+      "csv": "Export CSV"
+    },
+    "formats": {
+      "md": "Markdown document",
+      "json": "JSON file",
+      "txt": "Plain text",
+      "csv": "CSV table"
+    },
+    "copy": {
+      "copied": "LaTeX copied.",
+      "failed": "LaTeX could not be copied."
+    }
+  },
+  "status": {
+    "pending": "Waiting",
+    "uploading": "Uploading",
+    "processing": "Recognizing",
+    "done": "Completed",
+    "failed": "Failed",
+    "canceled": "Canceled"
+  },
+  "task": {
+    "progress": "Page {{page}} of {{total}}",
+    "progressLabel": "Recognition progress for {{name}}"
+  },
+  "errors": {
+    "technicalDetails": "Technical details",
+    "auth": {
+      "message": "Your token is invalid or has expired.",
+      "suggestion": "Update the AI Studio token in Settings."
+    },
+    "quota": {
+      "message": "Today's quota has been used up.",
+      "suggestion": "Switch to another model or wait for tomorrow's reset."
+    },
+    "rate_limited": {
+      "message": "The service is receiving too many requests.",
+      "suggestion": "PaddleDesk will retry with backoff, or you can try again later."
+    },
+    "invalid_input": {
+      "message": "The file or recognition options are not accepted by the service.",
+      "suggestion": "Check the file type, size, and page count, then submit it again."
+    },
+    "network": {
+      "message": "The network connection failed.",
+      "suggestion": "Check your network or proxy settings, then retry."
+    },
+    "server": {
+      "message": "The service is temporarily unavailable.",
+      "suggestion": "Please try again later."
+    },
+    "parse": {
+      "message": "The recognition result could not be parsed.",
+      "suggestion": "Check for updates and report the issue if it continues."
+    },
+    "unknown": {
+      "message": "The recognition task failed.",
+      "suggestion": "An unknown error occurred. Review the technical details and try again."
+    }
+  },
+  "runtime": {
+    "queueEventsUnavailable": "Task updates are unavailable.",
+    "connectingQueueEvents": "Connecting to task updates…",
+    "clipboardImageUnavailable": "No image is available on the clipboard.",
+    "captureFailed": "Screen capture could not be started."
+  },
+  "onboarding": {
+    "progress": "Setup step {{step}} of 2",
+    "skip": "Skip for now",
+    "start": "Start setup",
+    "welcome": {
+      "title": "Welcome to PaddleDesk",
+      "subtitle": "Complete two quick steps to start accurate document recognition.",
+      "cloudTitle": "Cloud recognition",
+      "cloudDisclosure": "Images and documents are uploaded to Baidu Cloud for recognition. PaddleDesk makes this explicit.",
+      "tokenStorage": "Your access token stays in Windows Credential Manager. It is never written to files, the database, or frontend storage."
+    },
+    "token": {
+      "title": "Connect PaddleOCR",
+      "subtitle": "Get a free AI Studio access token and validate it immediately.",
+      "step1": "Open the official PaddleOCR task page and sign in to Baidu AI Studio.",
+      "step2": "Follow the page instructions to create or copy an access token.",
+      "step3": "Paste it below. Once validated, recognition is ready to use.",
+      "openStudio": "Open AI Studio",
+      "validate": "Validate and get started",
+      "validating": "Validating…",
+      "invalid": "That token is not valid. Copy it again and retry.",
+      "failed": "The action failed. Check your connection and try again."
+    }
+  },
+  "update": {
+    "badge": "New version",
+    "title": "PaddleDesk {{version}} is available",
+    "bodyFallback": "This release includes improvements and fixes.",
+    "later": "Later",
+    "install": "Update and restart",
+    "installing": "Updating…",
+    "failed": "The update could not be installed. Please try again later."
+  },
+  "viewTitles": {
+    "home": "Home",
+    "viewer": "Result Viewer",
+    "queue": "Task Queue",
+    "history": "History",
+    "usage": "Usage",
+    "settings": "Settings"
+  },
+  "history": {
+    "searchLabel": "Search history",
+    "searchPlaceholder": "Search recognized text or file names",
+    "serviceFilter": "Filter by service",
+    "allServices": "All services",
+    "resultCount": "{{count}} records",
+    "loadFailed": "History could not be loaded.",
+    "empty": "No matching history."
+  },
+  "settings": {
+    "saveFailed": "The setting could not be saved. Please try again.",
+    "account": {
+      "title": "AI Studio account",
+      "cloudDisclosure": "Documents are uploaded to Baidu Cloud for recognition. Your token is stored only in Windows Credential Manager.",
+      "token": "Access token",
+      "tokenPlaceholder": "Enter your AI Studio token",
+      "validateToken": "Validate and save",
+      "valid": "Token validated and stored securely.",
+      "invalid": "The token is invalid.",
+      "failed": "The token could not be validated. Check your connection and try again.",
+      "openOnboarding": "Open setup guide again"
+    },
+    "recognition": {
+      "title": "Recognition",
+      "defaultService": "Default service",
+      "concurrency": "Concurrent tasks",
+      "hotkey": "Screen recognition shortcut: {{hotkey}}"
+    },
+    "privacy": {
+      "title": "Privacy and network",
+      "privacyMode": "Privacy mode",
+      "privacyHint": "When enabled, only page counts are kept; results and searchable history are not stored locally.",
+      "proxyMode": "Proxy mode",
+      "proxyAddress": "Custom proxy address",
+      "proxyAddressPlaceholder": "For example, http://127.0.0.1:7890"
+    },
+    "appearance": {
+      "title": "Appearance and startup",
+      "language": "Language",
+      "theme": "Theme",
+      "autostart": "Start automatically with Windows"
+    },
+    "language": {
+      "system": "Use system language",
+      "zhCN": "简体中文",
+      "en": "English"
+    },
+    "theme": {
+      "system": "Use system theme",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "proxy": {
+      "system": "Use system proxy",
+      "custom": "Custom proxy",
+      "direct": "Direct connection"
+    }
+  }
+}

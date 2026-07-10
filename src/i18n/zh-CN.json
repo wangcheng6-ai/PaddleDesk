@@ -1,0 +1,272 @@
+{
+  "app": {
+    "mark": "P",
+    "name": "PaddleDesk"
+  },
+  "nav": {
+    "label": "主导航",
+    "home": "主页",
+    "viewer": "结果查看器",
+    "queue": "任务队列",
+    "history": "历史记录",
+    "usage": "用量",
+    "settings": "设置"
+  },
+  "services": {
+    "selectorLabel": "识别服务",
+    "vl16": "PaddleOCR-VL-1.6",
+    "ppOcrV6": "PP-OCRv6",
+    "structureV3": "PP-StructureV3"
+  },
+  "usage": {
+    "today": "今日用量",
+    "summary": "{{used}} / {{quota}} 页",
+    "meterLabel": "已用 {{used}} 页，共 {{quota}} 页",
+    "byService": "各服务用量",
+    "serviceBreakdown": "分服务明细",
+    "lastSevenDays": "近 7 日",
+    "pages": "{{count}} 页",
+    "loadFailed": "无法加载用量数据。"
+  },
+  "actions": {
+    "retry": "重试",
+    "cancel": "取消",
+    "chooseFiles": "选择文件",
+    "capture": "截图识别",
+    "captureHint": "截图识别（Ctrl+Alt+S）",
+    "dismiss": "关闭",
+    "back": "返回"
+  },
+  "common": {
+    "loading": "正在加载…"
+  },
+  "home": {
+    "dropTitle": "拖入图片或 PDF，开始识别",
+    "dropDescription": "支持 png / jpg / jpeg / webp / pdf，多文件会自动进入队列。",
+    "cloudDisclosure": "文件将上传至百度云端识别。",
+    "supportedFiles": "支持的文件",
+    "submitFailed": "无法添加文件。",
+    "postCreateRefreshFailed": "任务已创建，但列表刷新失败。请前往任务队列查看。",
+    "dropRegistrationFailed": "无法监听文件拖放。",
+    "selectService": "选择服务",
+    "serviceHelp": "按任务类型选择官方云端模型",
+    "recent": "最近任务",
+    "recentHint": "双击打开结果",
+    "loadFailed": "无法加载最近任务。",
+    "empty": "还没有任务。选择或拖入文件即可开始。",
+    "serviceCards": {
+      "vl16": {
+        "tag": "推荐",
+        "description": "适合复杂文档的多模态解析，输出结构化 Markdown。",
+        "fit": "论文、扫描书、复杂版面、手写体"
+      },
+      "ppOcrV6": {
+        "tag": "最快",
+        "description": "面向场景文字的快速识别，支持多种语言。",
+        "fit": "截图取字、照片、街景、证件"
+      },
+      "structureV3": {
+        "tag": "精细坐标",
+        "description": "保留版面结构和精细坐标，适合结构化提取。",
+        "fit": "表格提取、双层 PDF、版面还原"
+      }
+    }
+  },
+  "queue": {
+    "summary": "{{active}} 个进行中 · {{failed}} 个失败",
+    "loadFailed": "无法加载任务队列。",
+    "actionFailed": "操作失败，请重试。",
+    "empty": "队列为空。",
+    "persistenceNote": "任务会保留在本机，重新启动后继续处理。"
+  },
+  "viewer": {
+    "original": "原文档",
+    "originalAlt": "待核对的原始文档",
+    "result": "识别结果",
+    "resultTabs": "结果格式",
+    "showBboxes": "显示识别区域",
+    "pdfPreview": "PDF 预览",
+    "pdfLoadFailed": "无法渲染这一页 PDF。",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "page": "第 {{page}} / {{total}} 页",
+    "noSelection": "请先从主页或任务队列选择一个已完成任务。",
+    "noResult": "该任务还没有可查看的结果。",
+    "loadFailed": "无法加载识别结果。",
+    "exportFailed": "导出失败，请重试。",
+    "copyLatex": "复制 LaTeX",
+    "tabs": {
+      "markdown": "Markdown",
+      "json": "JSON",
+      "text": "纯文本"
+    },
+    "export": {
+      "md": "导出 Markdown",
+      "json": "导出 JSON",
+      "txt": "导出纯文本",
+      "csv": "导出 CSV"
+    },
+    "formats": {
+      "md": "Markdown 文档",
+      "json": "JSON 文件",
+      "txt": "纯文本",
+      "csv": "CSV 表格"
+    },
+    "copy": {
+      "copied": "LaTeX 已复制。",
+      "failed": "无法复制 LaTeX。"
+    }
+  },
+  "status": {
+    "pending": "等待中",
+    "uploading": "上传中",
+    "processing": "识别中",
+    "done": "已完成",
+    "failed": "失败",
+    "canceled": "已取消"
+  },
+  "task": {
+    "progress": "第 {{page}} / {{total}} 页",
+    "progressLabel": "{{name}} 的识别进度"
+  },
+  "errors": {
+    "technicalDetails": "技术详情",
+    "auth": {
+      "message": "Token 无效或已过期。",
+      "suggestion": "请在设置中更新 AI Studio Token。"
+    },
+    "quota": {
+      "message": "今日额度已用尽。",
+      "suggestion": "可改用其他模型，或等待明日额度重置。"
+    },
+    "rate_limited": {
+      "message": "服务当前请求较多。",
+      "suggestion": "PaddleDesk 会自动退避重试，也可稍后手动重试。"
+    },
+    "invalid_input": {
+      "message": "文件或识别参数不符合服务要求。",
+      "suggestion": "请检查文件格式、大小、页数后重新提交。"
+    },
+    "network": {
+      "message": "网络连接失败。",
+      "suggestion": "检查网络或代理设置后重试。"
+    },
+    "server": {
+      "message": "服务暂时不可用。",
+      "suggestion": "请稍后重试。"
+    },
+    "parse": {
+      "message": "无法解析识别结果。",
+      "suggestion": "请检查更新；若问题持续，请报告问题。"
+    },
+    "unknown": {
+      "message": "识别任务失败。",
+      "suggestion": "发生了未知错误，请查看技术详情后重试。"
+    }
+  },
+  "runtime": {
+    "queueEventsUnavailable": "无法接收任务更新。",
+    "connectingQueueEvents": "正在连接任务更新…",
+    "clipboardImageUnavailable": "剪贴板中没有可识别的图片。",
+    "captureFailed": "无法启动截图识别。"
+  },
+  "onboarding": {
+    "progress": "首启设置，第 {{step}} 步，共 2 步",
+    "skip": "暂时跳过",
+    "start": "开始设置",
+    "welcome": {
+      "title": "欢迎使用 PaddleDesk",
+      "subtitle": "两步完成设置，即可开始高精度文档识别。",
+      "cloudTitle": "使用云端识别",
+      "cloudDisclosure": "图片和文档会上传至百度云端完成识别，PaddleDesk 不会隐瞒这一点。",
+      "tokenStorage": "Access Token 只保存在 Windows 凭据管理器，不会写入文件、数据库或前端存储。"
+    },
+    "token": {
+      "title": "连接 PaddleOCR 服务",
+      "subtitle": "获取免费的 AI Studio Access Token，然后立即验证。",
+      "step1": "打开官方 PaddleOCR 任务页并登录百度 AI Studio。",
+      "step2": "按页面提示创建或复制 Access Token。",
+      "step3": "粘贴到下方；验证成功后即可开始识别。",
+      "openStudio": "打开 AI Studio",
+      "validate": "验证并开始使用",
+      "validating": "正在验证…",
+      "invalid": "Token 无效，请重新复制后再试。",
+      "failed": "操作失败，请检查网络后重试。"
+    }
+  },
+  "update": {
+    "badge": "新版本",
+    "title": "PaddleDesk {{version}} 可用",
+    "bodyFallback": "此版本包含体验改进和问题修复。",
+    "later": "稍后",
+    "install": "更新并重启",
+    "installing": "正在更新…",
+    "failed": "更新安装失败，请稍后重试。"
+  },
+  "viewTitles": {
+    "home": "主页",
+    "viewer": "结果查看器",
+    "queue": "任务队列",
+    "history": "历史记录",
+    "usage": "用量",
+    "settings": "设置"
+  },
+  "history": {
+    "searchLabel": "搜索历史",
+    "searchPlaceholder": "搜索识别内容或文件名",
+    "serviceFilter": "按服务筛选",
+    "allServices": "全部服务",
+    "resultCount": "{{count}} 条记录",
+    "loadFailed": "无法加载历史记录。",
+    "empty": "没有符合条件的历史记录。"
+  },
+  "settings": {
+    "saveFailed": "设置未能保存，请重试。",
+    "account": {
+      "title": "AI Studio 账户",
+      "cloudDisclosure": "文档会上传至百度云端识别；Token 仅保存在 Windows 凭据管理器中。",
+      "token": "Access Token",
+      "tokenPlaceholder": "输入 AI Studio Token",
+      "validateToken": "验证并保存",
+      "valid": "Token 已验证并安全保存。",
+      "invalid": "Token 无效。",
+      "failed": "Token 验证失败，请检查网络后重试。",
+      "openOnboarding": "重新打开首启向导"
+    },
+    "recognition": {
+      "title": "识别",
+      "defaultService": "默认服务",
+      "concurrency": "并发任务数",
+      "hotkey": "截图识别快捷键：{{hotkey}}"
+    },
+    "privacy": {
+      "title": "隐私与网络",
+      "privacyMode": "隐私模式",
+      "privacyHint": "开启后只统计页数，不在本机保存识别结果与可搜索历史。",
+      "proxyMode": "代理模式",
+      "proxyAddress": "自定义代理地址",
+      "proxyAddressPlaceholder": "例如 http://127.0.0.1:7890"
+    },
+    "appearance": {
+      "title": "外观与启动",
+      "language": "语言",
+      "theme": "主题",
+      "autostart": "开机自动启动"
+    },
+    "language": {
+      "system": "跟随系统",
+      "zhCN": "简体中文",
+      "en": "English"
+    },
+    "theme": {
+      "system": "跟随系统主题",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "proxy": {
+      "system": "系统代理",
+      "custom": "自定义代理",
+      "direct": "强制直连"
+    }
+  }
+}

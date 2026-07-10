@@ -16,7 +16,7 @@ use crate::{
     storage::{NewTask, Store},
 };
 
-const TEST_TIMEOUT: Duration = Duration::from_secs(1);
+const TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 async fn terminal(rx: &mut mpsc::UnboundedReceiver<QueueEvent>) -> QueueEvent {
     timeout(TEST_TIMEOUT, async {

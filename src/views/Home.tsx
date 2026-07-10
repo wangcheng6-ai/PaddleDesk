@@ -51,6 +51,7 @@ export function Home() {
       await createTasks(paths, service);
       try {
         await refresh();
+        setLoadFailed(false);
       } catch {
         setPostCreateRefreshFailed(true);
       }

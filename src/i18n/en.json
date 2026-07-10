@@ -21,7 +21,12 @@
   "usage": {
     "today": "Today's usage",
     "summary": "{{used}} / {{quota}} pages",
-    "meterLabel": "{{used}} of {{quota}} pages used today"
+    "meterLabel": "{{used}} of {{quota}} pages used",
+    "byService": "Usage by service",
+    "serviceBreakdown": "Service breakdown",
+    "lastSevenDays": "Last 7 days",
+    "pages": "{{count}} pages",
+    "loadFailed": "Usage data could not be loaded."
   },
   "actions": {
     "retry": "Retry",
@@ -158,8 +163,60 @@
     "usage": "Usage",
     "settings": "Settings"
   },
+  "history": {
+    "searchLabel": "Search history",
+    "searchPlaceholder": "Search recognized text or file names",
+    "serviceFilter": "Filter by service",
+    "allServices": "All services",
+    "resultCount": "{{count}} records",
+    "loadFailed": "History could not be loaded.",
+    "empty": "No matching history."
+  },
   "settings": {
+    "saveFailed": "The setting could not be saved. Please try again.",
+    "account": {
+      "title": "AI Studio account",
+      "cloudDisclosure": "Documents are uploaded to Baidu Cloud for recognition. Your token is stored only in Windows Credential Manager.",
+      "token": "Access token",
+      "tokenPlaceholder": "Enter your AI Studio token",
+      "validateToken": "Validate and save",
+      "valid": "Token validated and stored securely.",
+      "invalid": "The token is invalid.",
+      "failed": "The token could not be validated. Check your connection and try again."
+    },
+    "recognition": {
+      "title": "Recognition",
+      "defaultService": "Default service",
+      "concurrency": "Concurrent tasks",
+      "hotkey": "Screen recognition shortcut: {{hotkey}}"
+    },
+    "privacy": {
+      "title": "Privacy and network",
+      "privacyMode": "Privacy mode",
+      "privacyHint": "When enabled, only page counts are kept; results and searchable history are not stored locally.",
+      "proxyMode": "Proxy mode",
+      "proxyAddress": "Custom proxy address",
+      "proxyAddressPlaceholder": "For example, http://127.0.0.1:7890"
+    },
+    "appearance": {
+      "title": "Appearance and startup",
+      "language": "Language",
+      "theme": "Theme",
+      "autostart": "Start automatically with Windows"
+    },
+    "language": {
+      "system": "Use system language",
+      "zhCN": "简体中文",
+      "en": "English"
+    },
+    "theme": {
+      "system": "Use system theme",
+      "light": "Light",
+      "dark": "Dark"
+    },
     "proxy": {
+      "system": "Use system proxy",
+      "custom": "Custom proxy",
       "direct": "Direct connection"
     }
   }

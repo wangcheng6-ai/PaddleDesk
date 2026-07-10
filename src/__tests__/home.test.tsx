@@ -164,3 +164,32 @@ test("does not report task creation as failed when only the follow-up refresh fa
     invokeMock.mock.calls.filter(([command]) => command === "create_tasks"),
   ).toHaveLength(1);
 });
+
+test("clears an initial load error after a successful post-create refresh", async () => {
+  let listCalls = 0;
+  invokeMock.mockImplementation(async (command) => {
+    if (command === "list_tasks") {
+      listCalls += 1;
+      if (listCalls === 1) throw new Error("initial load failed");
+      return [
+        {
+          id: "created",
+          service: "vl16",
+          status: "pending",
+          input_path: "C:/docs/created.png",
+          created_at: 8,
+        },
+      ];
+    }
+    if (command === "create_tasks") return ["created"];
+    throw new Error(`unexpected command: ${command}`);
+  });
+  openMock.mockResolvedValue(["C:/docs/created.png"]);
+  render(<Home />);
+  expect(await screen.findByText("无法加载最近任务。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
+
+  expect(await screen.findByText("created.png")).toBeInTheDocument();
+  expect(screen.queryByText("无法加载最近任务。")).not.toBeInTheDocument();
+});

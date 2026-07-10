@@ -6,7 +6,10 @@ import { TopBar } from "./components/TopBar";
 import { onQueueEvent } from "./lib/ipc";
 import { useApp, type View } from "./stores/app";
 import { Home } from "./views/Home";
+import { History } from "./views/History";
 import { Queue } from "./views/Queue";
+import { Settings } from "./views/Settings";
+import { Usage } from "./views/Usage";
 import { Viewer } from "./views/Viewer";
 
 const titleKeys: Record<View, string> = {
@@ -65,6 +68,12 @@ function App() {
       <Queue />
     ) : view === "viewer" ? (
       <Viewer />
+    ) : view === "history" ? (
+      <History />
+    ) : view === "usage" ? (
+      <Usage />
+    ) : view === "settings" ? (
+      <Settings />
     ) : (
       <h1>{t(titleKeys[view])}</h1>
     );

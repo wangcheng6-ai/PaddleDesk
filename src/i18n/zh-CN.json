@@ -21,7 +21,12 @@
   "usage": {
     "today": "今日用量",
     "summary": "{{used}} / {{quota}} 页",
-    "meterLabel": "今日已用 {{used}} 页，共 {{quota}} 页"
+    "meterLabel": "已用 {{used}} 页，共 {{quota}} 页",
+    "byService": "各服务用量",
+    "serviceBreakdown": "分服务明细",
+    "lastSevenDays": "近 7 日",
+    "pages": "{{count}} 页",
+    "loadFailed": "无法加载用量数据。"
   },
   "actions": {
     "retry": "重试",
@@ -158,8 +163,60 @@
     "usage": "用量",
     "settings": "设置"
   },
+  "history": {
+    "searchLabel": "搜索历史",
+    "searchPlaceholder": "搜索识别内容或文件名",
+    "serviceFilter": "按服务筛选",
+    "allServices": "全部服务",
+    "resultCount": "{{count}} 条记录",
+    "loadFailed": "无法加载历史记录。",
+    "empty": "没有符合条件的历史记录。"
+  },
   "settings": {
+    "saveFailed": "设置未能保存，请重试。",
+    "account": {
+      "title": "AI Studio 账户",
+      "cloudDisclosure": "文档会上传至百度云端识别；Token 仅保存在 Windows 凭据管理器中。",
+      "token": "Access Token",
+      "tokenPlaceholder": "输入 AI Studio Token",
+      "validateToken": "验证并保存",
+      "valid": "Token 已验证并安全保存。",
+      "invalid": "Token 无效。",
+      "failed": "Token 验证失败，请检查网络后重试。"
+    },
+    "recognition": {
+      "title": "识别",
+      "defaultService": "默认服务",
+      "concurrency": "并发任务数",
+      "hotkey": "截图识别快捷键：{{hotkey}}"
+    },
+    "privacy": {
+      "title": "隐私与网络",
+      "privacyMode": "隐私模式",
+      "privacyHint": "开启后只统计页数，不在本机保存识别结果与可搜索历史。",
+      "proxyMode": "代理模式",
+      "proxyAddress": "自定义代理地址",
+      "proxyAddressPlaceholder": "例如 http://127.0.0.1:7890"
+    },
+    "appearance": {
+      "title": "外观与启动",
+      "language": "语言",
+      "theme": "主题",
+      "autostart": "开机自动启动"
+    },
+    "language": {
+      "system": "跟随系统",
+      "zhCN": "简体中文",
+      "en": "English"
+    },
+    "theme": {
+      "system": "跟随系统主题",
+      "light": "浅色",
+      "dark": "深色"
+    },
     "proxy": {
+      "system": "系统代理",
+      "custom": "自定义代理",
       "direct": "强制直连"
     }
   }

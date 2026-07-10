@@ -22,6 +22,7 @@ i18next.use(initReactI18next);
 
 export async function initI18n() {
   const settings = await getSettings();
+  document.documentElement.dataset.theme = settings.theme ?? "system";
   await i18next.init({
     resources: {
       "zh-CN": { translation: zhCN },

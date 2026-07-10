@@ -41,6 +41,22 @@ fn validate_setting_keys(settings: &HashMap<String, String>) -> Result<(), Strin
             "setting '{key}' must use Windows Credential Manager"
         ));
     }
+    for (key, value) in settings {
+        let valid = match key.as_str() {
+            "language" => matches!(value.as_str(), "system" | "zh-CN" | "en"),
+            "theme" => matches!(value.as_str(), "system" | "light" | "dark"),
+            "proxy_mode" => matches!(value.as_str(), "system" | "custom" | "direct"),
+            "concurrency" => matches!(value.as_str(), "1" | "2" | "3" | "4"),
+            "privacy_mode" | "autostart" => matches!(value.as_str(), "0" | "1"),
+            "default_service" => {
+                matches!(value.as_str(), "vl16" | "pp_ocr_v6" | "structure_v3")
+            }
+            _ => true,
+        };
+        if !valid {
+            return Err(format!("invalid value for setting '{key}'"));
+        }
+    }
     Ok(())
 }
 
@@ -277,6 +293,18 @@ mod tests {
 
         assert!(validate_setting_keys(&secret).is_err());
         assert!(validate_setting_keys(&ordinary).is_ok());
+    }
+
+    #[test]
+    fn settings_reject_invalid_enum_values() {
+        for invalid in [
+            HashMap::from([("language".into(), "fr".into())]),
+            HashMap::from([("theme".into(), "sepia".into())]),
+            HashMap::from([("proxy_mode".into(), "auto".into())]),
+            HashMap::from([("concurrency".into(), "8".into())]),
+        ] {
+            assert!(validate_setting_keys(&invalid).is_err());
+        }
     }
 
     #[tokio::test]

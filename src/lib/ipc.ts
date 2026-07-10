@@ -26,6 +26,19 @@ export interface RecognitionResult {
   pages: RecognitionPage[];
 }
 
+export interface HistoryRow {
+  task_id: string;
+  file_name: string;
+  snippet: string;
+  created_at: number;
+}
+
+export interface UsageRow {
+  date: string;
+  service: ServiceId;
+  pages: number;
+}
+
 interface ProgressPayload {
   id: string;
   stage: "uploading" | "processing";
@@ -45,6 +58,12 @@ interface FailedPayload extends IdPayload {
 export const getSettings = () =>
   invoke<Record<string, string>>("get_settings");
 
+export const setSettings = (map: Record<string, string>) =>
+  invoke<void>("set_settings", { map });
+
+export const validateToken = (token: string) =>
+  invoke<boolean>("validate_token", { token });
+
 export const createTasks = (paths: string[], service: ServiceId) =>
   invoke<string[]>("create_tasks", {
     paths,
@@ -54,6 +73,12 @@ export const createTasks = (paths: string[], service: ServiceId) =>
 
 export const listTasks = (status: string | null) =>
   invoke<TaskSummary[]>("list_tasks", { status });
+
+export const searchHistory = (query: string) =>
+  invoke<HistoryRow[]>("search_history", { query });
+
+export const getUsage = (days: number) =>
+  invoke<UsageRow[]>("get_usage", { days });
 
 export const cancelTask = (id: string) =>
   invoke<void>("cancel_task", { id });

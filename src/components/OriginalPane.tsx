@@ -1,10 +1,13 @@
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { scaleBbox } from "../lib/bbox";
 import type { RecognitionResult } from "../lib/ipc";
-import { PdfPage } from "./PdfPage";
+
+const PdfPage = lazy(() =>
+  import("./PdfPage").then(({ PdfPage: Component }) => ({ default: Component })),
+);
 
 interface OriginalPaneProps {
   inputPath: string;
@@ -48,12 +51,14 @@ export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPanePro
         >
           {isPdf ? (
             sourceBytes ? (
-              <PdfPage
-                bytes={sourceBytes}
-                pageNumber={pageIndex + 1}
-                onSize={onPdfSize}
-                onError={onPdfError}
-              />
+              <Suspense fallback={<div className="pdf-placeholder">{t("common.loading")}</div>}>
+                <PdfPage
+                  bytes={sourceBytes}
+                  pageNumber={pageIndex + 1}
+                  onSize={onPdfSize}
+                  onError={onPdfError}
+                />
+              </Suspense>
             ) : (
               <div className="pdf-placeholder">{t("common.loading")}</div>
             )

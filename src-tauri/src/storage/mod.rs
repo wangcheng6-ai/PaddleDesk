@@ -19,6 +19,11 @@ pub struct NewTask {
     pub options_json: String,
 }
 
+pub(crate) struct AdmittedTask {
+    pub task: NewTask,
+    pub persist_result: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskRow {
     pub id: String,
@@ -58,7 +63,8 @@ impl Store {
                service TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
                input_path TEXT NOT NULL, options_json TEXT NOT NULL DEFAULT '{}',
                progress_page INTEGER NOT NULL DEFAULT 0, total_pages INTEGER NOT NULL DEFAULT 0,
-               error_kind TEXT, error_msg TEXT);
+               error_kind TEXT, error_msg TEXT,
+               persist_result INTEGER NOT NULL DEFAULT 0);
              CREATE TABLE IF NOT EXISTS results(
                task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
                markdown TEXT NOT NULL, blocks_json TEXT NOT NULL, page_count INTEGER NOT NULL);
@@ -69,19 +75,22 @@ impl Store {
                PRIMARY KEY(date, service));
              CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
+        ensure_persist_result_column(&connection)?;
         Ok(Store(connection))
     }
 
-    pub fn insert_task(&self, task: &NewTask) -> Result<()> {
+    pub fn insert_task(&self, task: &NewTask, persist_result: bool) -> Result<()> {
         self.0.execute(
-            "INSERT INTO tasks(id, created_at, service, input_path, options_json)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO tasks(
+               id, created_at, service, input_path, options_json, persist_result
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 task.id,
                 Local::now().timestamp(),
                 service_name(task.service),
                 task.input_path,
-                task.options_json
+                task.options_json,
+                persist_result
             ],
         )?;
         Ok(())
@@ -159,19 +168,22 @@ impl Store {
         Ok(changed == 1)
     }
 
-    pub fn retry_task(&self, id: &str) -> Result<Option<NewTask>> {
+    pub(crate) fn retry_task(&self, id: &str) -> Result<Option<AdmittedTask>> {
         let transaction = self.0.unchecked_transaction()?;
         let task = transaction
             .query_row(
-                "SELECT id, service, input_path, options_json FROM tasks
+                "SELECT id, service, input_path, options_json, persist_result FROM tasks
                  WHERE id = ?1 AND status = 'failed'",
                 [id],
                 |row| {
-                    Ok(NewTask {
-                        id: row.get(0)?,
-                        service: service_from_str(1, row.get(1)?)?,
-                        input_path: row.get(2)?,
-                        options_json: row.get(3)?,
+                    Ok(AdmittedTask {
+                        task: NewTask {
+                            id: row.get(0)?,
+                            service: service_from_str(1, row.get(1)?)?,
+                            input_path: row.get(2)?,
+                            options_json: row.get(3)?,
+                        },
+                        persist_result: row.get(4)?,
                     })
                 },
             )
@@ -197,11 +209,23 @@ impl Store {
         }
     }
 
-    pub fn unfinished_tasks(&self) -> Result<Vec<TaskRow>> {
-        self.query_tasks(
-            &format!("SELECT {TASK_COLUMNS} FROM tasks WHERE status NOT IN ('done','canceled')"),
-            &[],
-        )
+    pub(crate) fn unfinished_tasks(&self) -> Result<Vec<AdmittedTask>> {
+        let mut statement = self.0.prepare(
+            "SELECT id, service, input_path, options_json, persist_result FROM tasks
+             WHERE status NOT IN ('done','canceled')",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(AdmittedTask {
+                task: NewTask {
+                    id: row.get(0)?,
+                    service: service_from_str(1, row.get(1)?)?,
+                    input_path: row.get(2)?,
+                    options_json: row.get(3)?,
+                },
+                persist_result: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn save_result(
@@ -320,11 +344,40 @@ impl Store {
         Ok(())
     }
 
+    pub fn set_settings(&self, settings: &HashMap<String, String>) -> Result<()> {
+        let transaction = self.0.unchecked_transaction()?;
+        for (key, value) in settings {
+            transaction.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn query_tasks(&self, sql: &str, params: &[&dyn ToSql]) -> Result<Vec<TaskRow>> {
         let mut statement = self.0.prepare(sql)?;
         let rows = statement.query_map(params, task_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+fn ensure_persist_result_column(connection: &Connection) -> Result<()> {
+    let mut statement = connection.prepare("PRAGMA table_info(tasks)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let mut found = false;
+    for column in columns {
+        found |= column? == "persist_result";
+    }
+    if !found {
+        connection.execute(
+            "ALTER TABLE tasks ADD COLUMN persist_result INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 fn write_result(
@@ -439,12 +492,15 @@ mod tests {
     #[test]
     fn task_lifecycle_and_resume() {
         let (_d, s) = tmp_store();
-        s.insert_task(&NewTask {
-            id: "t1".into(),
-            service: ServiceId::Vl16,
-            input_path: "a.pdf".into(),
-            options_json: "{}".into(),
-        })
+        s.insert_task(
+            &NewTask {
+                id: "t1".into(),
+                service: ServiceId::Vl16,
+                input_path: "a.pdf".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
         .unwrap();
         s.update_status("t1", "processing", Some((3, 10)), None)
             .unwrap();
@@ -456,12 +512,15 @@ mod tests {
     #[test]
     fn fts_search_finds_content() {
         let (_d, s) = tmp_store();
-        s.insert_task(&NewTask {
-            id: "t1".into(),
-            service: ServiceId::Vl16,
-            input_path: "讲义.pdf".into(),
-            options_json: "{}".into(),
-        })
+        s.insert_task(
+            &NewTask {
+                id: "t1".into(),
+                service: ServiceId::Vl16,
+                input_path: "讲义.pdf".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
         .unwrap();
         let r = RecognitionResult {
             markdown: "卷积神经网络基础".into(),
@@ -491,6 +550,50 @@ mod tests {
                 ("theme".to_string(), "dark".to_string()),
             ])
         );
+    }
+
+    #[test]
+    fn batch_settings_roll_back_every_key_on_failure() {
+        let (_d, s) = tmp_store();
+        s.0.execute_batch(
+            "CREATE TRIGGER fail_privacy_setting BEFORE INSERT ON settings
+             WHEN NEW.key = 'privacy_mode'
+             BEGIN SELECT RAISE(ABORT, 'forced settings failure'); END;",
+        )
+        .unwrap();
+        let settings = HashMap::from([
+            ("theme".to_string(), "dark".to_string()),
+            ("privacy_mode".to_string(), "1".to_string()),
+        ]);
+
+        assert!(s.set_settings(&settings).is_err());
+        assert!(s.get_settings().unwrap().is_empty());
+    }
+
+    #[test]
+    fn opening_legacy_database_adds_admission_policy_column() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy.db");
+        let legacy = Connection::open(&path).unwrap();
+        legacy
+            .execute_batch(
+                "CREATE TABLE tasks(
+                   id TEXT PRIMARY KEY, created_at INTEGER NOT NULL,
+                   service TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+                   input_path TEXT NOT NULL, options_json TEXT NOT NULL DEFAULT '{}',
+                   progress_page INTEGER NOT NULL DEFAULT 0,
+                   total_pages INTEGER NOT NULL DEFAULT 0,
+                   error_kind TEXT, error_msg TEXT);
+                 INSERT INTO tasks(id, created_at, service, input_path)
+                 VALUES ('legacy', 1, 'vl16', 'legacy.png');",
+            )
+            .unwrap();
+        drop(legacy);
+
+        let store = Store::open(&path).unwrap();
+        let tasks = store.unfinished_tasks().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert!(!tasks[0].persist_result);
     }
 
     #[test]
@@ -571,12 +674,15 @@ mod tests {
     #[test]
     fn complete_task_rolls_back_status_result_and_usage_together() {
         let (_d, s) = tmp_store();
-        s.insert_task(&NewTask {
-            id: "atomic".into(),
-            service: ServiceId::Vl16,
-            input_path: "a.png".into(),
-            options_json: "{}".into(),
-        })
+        s.insert_task(
+            &NewTask {
+                id: "atomic".into(),
+                service: ServiceId::Vl16,
+                input_path: "a.png".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
         .unwrap();
         s.0.execute_batch(
             "CREATE TRIGGER fail_usage BEFORE INSERT ON usage

@@ -44,6 +44,22 @@ fn validate_setting_keys(settings: &HashMap<String, String>) -> Result<(), Strin
     Ok(())
 }
 
+fn apply_settings(
+    settings: HashMap<String, String>,
+    store: &Store,
+    queue: &Queue,
+) -> Result<(), String> {
+    validate_setting_keys(&settings)?;
+    let persist_results = settings.get("privacy_mode").map(|value| value != "1");
+    store
+        .set_settings(&settings)
+        .map_err(|error| error.to_string())?;
+    if let Some(persist_results) = persist_results {
+        queue.set_persist_results(persist_results);
+    }
+    Ok(())
+}
+
 fn validate_token_with(
     token: &str,
     save: impl FnOnce(&str) -> Result<(), String>,
@@ -152,14 +168,8 @@ pub fn set_settings(
     map: HashMap<String, String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    validate_setting_keys(&map)?;
     let store = lock_store(&state)?;
-    for (key, value) in map {
-        store
-            .set_setting(&key, &value)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    apply_settings(map, &store, &state.queue)
 }
 
 #[tauri::command]
@@ -199,6 +209,46 @@ mod tests {
         storage::Store,
     };
 
+    fn test_queue(
+        persist_results: bool,
+    ) -> (
+        tempfile::TempDir,
+        Arc<Mutex<Store>>,
+        Arc<Queue>,
+        mpsc::UnboundedReceiver<QueueEvent>,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Mutex::new(
+            Store::open(&directory.path().join("commands.db")).unwrap(),
+        ));
+        let services: HashMap<ServiceId, Arc<dyn OcrService>> = HashMap::from([(
+            ServiceId::Vl16,
+            Arc::new(MockOcr::new()) as Arc<dyn OcrService>,
+        )]);
+        let (sender, events) = mpsc::unbounded_channel();
+        let queue = Queue::new(
+            store.clone(),
+            services,
+            1,
+            sender,
+            Duration::from_millis(1),
+            persist_results,
+        );
+        (directory, store, queue, events)
+    }
+
+    async fn wait_done(events: &mut mpsc::UnboundedReceiver<QueueEvent>) -> String {
+        timeout(Duration::from_secs(1), async {
+            loop {
+                if let Some(QueueEvent::Done { id }) = events.recv().await {
+                    return id;
+                }
+            }
+        })
+        .await
+        .unwrap()
+    }
+
     #[test]
     fn validate_token_writes_injected_store_before_returning_true() {
         let mut stored = None;
@@ -230,22 +280,73 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_tasks_submits_every_path() {
-        let directory = tempfile::tempdir().unwrap();
-        let store = Arc::new(Mutex::new(
-            Store::open(&directory.path().join("commands.db")).unwrap(),
-        ));
-        let mut services: HashMap<ServiceId, Arc<dyn OcrService>> = HashMap::new();
-        services.insert(ServiceId::Vl16, Arc::new(MockOcr::new()));
-        let (sender, mut events) = mpsc::unbounded_channel();
-        let queue = Queue::new(
-            store.clone(),
-            services,
-            1,
-            sender,
-            Duration::from_millis(1),
-            true,
+    async fn privacy_setting_disables_results_but_keeps_lifecycle_and_usage() {
+        let (_directory, store, queue, mut events) = test_queue(true);
+        apply_settings(
+            HashMap::from([("privacy_mode".into(), "1".into())]),
+            &store.lock().unwrap(),
+            &queue,
+        )
+        .unwrap();
+        queue.submit(NewTask {
+            id: "private".into(),
+            service: ServiceId::Vl16,
+            input_path: "private.png".into(),
+            options_json: "{}".into(),
+        });
+        assert_eq!(wait_done(&mut events).await, "private");
+
+        let store = store.lock().unwrap();
+        assert_eq!(
+            store.get_setting("privacy_mode").unwrap().as_deref(),
+            Some("1")
         );
+        assert_eq!(store.list_tasks(Some("done")).unwrap().len(), 1);
+        assert!(store.get_result("private").unwrap().is_none());
+        assert!(store.search_history("Mock").unwrap().is_empty());
+        assert_eq!(store.usage_since(1).unwrap()[0].pages, 1);
+    }
+
+    #[tokio::test]
+    async fn failed_settings_batch_keeps_database_and_queue_policy_aligned() {
+        let (directory, store, queue, mut events) = test_queue(false);
+        rusqlite::Connection::open(directory.path().join("commands.db"))
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER fail_privacy_setting BEFORE INSERT ON settings
+                 WHEN NEW.key = 'privacy_mode'
+                 BEGIN SELECT RAISE(ABORT, 'forced settings failure'); END;",
+            )
+            .unwrap();
+        let result = apply_settings(
+            HashMap::from([
+                ("theme".into(), "dark".into()),
+                ("privacy_mode".into(), "0".into()),
+            ]),
+            &store.lock().unwrap(),
+            &queue,
+        );
+        assert!(result.is_err());
+        assert!(store.lock().unwrap().get_settings().unwrap().is_empty());
+
+        queue.submit(NewTask {
+            id: "still-private".into(),
+            service: ServiceId::Vl16,
+            input_path: "private.png".into(),
+            options_json: "{}".into(),
+        });
+        assert_eq!(wait_done(&mut events).await, "still-private");
+        assert!(store
+            .lock()
+            .unwrap()
+            .get_result("still-private")
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn create_tasks_submits_every_path() {
+        let (_directory, store, queue, mut events) = test_queue(true);
 
         let ids = create_tasks_with_queue(
             vec!["one.png".into(), "two.png".into()],
@@ -256,15 +357,7 @@ mod tests {
         .unwrap();
 
         for _ in 0..2 {
-            timeout(Duration::from_secs(1), async {
-                loop {
-                    if matches!(events.recv().await, Some(QueueEvent::Done { .. })) {
-                        break;
-                    }
-                }
-            })
-            .await
-            .unwrap();
+            wait_done(&mut events).await;
         }
         assert_eq!(ids.len(), 2);
         assert_ne!(ids[0], ids[1]);

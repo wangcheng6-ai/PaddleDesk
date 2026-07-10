@@ -25,13 +25,94 @@ struct UsageUpdated {
     today_pages: u32,
 }
 
-fn task_event_name(event: &queue::QueueEvent) -> &'static str {
-    match event {
-        queue::QueueEvent::Progress { .. } => "task:progress",
-        queue::QueueEvent::Done { .. } => "task:done",
-        queue::QueueEvent::Failed { .. } => "task:failed",
-        queue::QueueEvent::Canceled { .. } => "task:canceled",
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BridgeDiagnostic {
+    TaskEmit,
+    UsageLock,
+    UsageQuery,
+    UsageEmit,
+}
+
+impl BridgeDiagnostic {
+    fn message(self) -> &'static str {
+        match self {
+            Self::TaskEmit => "task event emit failed",
+            Self::UsageLock => "usage store lock failed",
+            Self::UsageQuery => "usage query failed",
+            Self::UsageEmit => "usage event emit failed",
+        }
     }
+}
+
+fn task_ipc_event(event: &queue::QueueEvent) -> (&'static str, serde_json::Value) {
+    match event {
+        queue::QueueEvent::Progress {
+            id,
+            stage,
+            page,
+            total,
+        } => (
+            "task:progress",
+            serde_json::json!({"id": id, "stage": stage, "page": page, "total": total}),
+        ),
+        queue::QueueEvent::Done { id } => ("task:done", serde_json::json!({"id": id})),
+        queue::QueueEvent::Failed { id, error } => (
+            "task:failed",
+            serde_json::json!({
+                "id": id,
+                "kind": ipc_error_kind(error),
+                "message": error.to_string(),
+            }),
+        ),
+        queue::QueueEvent::Canceled { id } => ("task:canceled", serde_json::json!({"id": id})),
+    }
+}
+
+fn ipc_error_kind(error: &model::OcrError) -> &'static str {
+    match error {
+        model::OcrError::Auth => "Auth",
+        model::OcrError::Quota => "Quota",
+        model::OcrError::Network(_) => "Network",
+        model::OcrError::Server(_) => "Server",
+        model::OcrError::Parse(_) => "Parse",
+    }
+}
+
+fn forward_event(
+    event: &queue::QueueEvent,
+    load_usage: impl FnOnce() -> Result<u32, BridgeDiagnostic>,
+    mut emit: impl FnMut(&str, serde_json::Value) -> Result<(), ()>,
+    mut diagnose: impl FnMut(BridgeDiagnostic),
+) {
+    let (name, payload) = task_ipc_event(event);
+    if emit(name, payload).is_err() {
+        diagnose(BridgeDiagnostic::TaskEmit);
+    }
+    if matches!(event, queue::QueueEvent::Done { .. }) {
+        match load_usage() {
+            Ok(today_pages) => {
+                let payload = serde_json::json!(UsageUpdated { today_pages });
+                if emit("usage:updated", payload).is_err() {
+                    diagnose(BridgeDiagnostic::UsageEmit);
+                }
+            }
+            Err(error) => diagnose(error),
+        }
+    }
+}
+
+fn load_today_pages(store: &Arc<Mutex<storage::Store>>) -> Result<u32, BridgeDiagnostic> {
+    let store = store.lock().map_err(|_| BridgeDiagnostic::UsageLock)?;
+    let rows = store
+        .usage_since(1)
+        .map_err(|_| BridgeDiagnostic::UsageQuery)?;
+    Ok(rows
+        .into_iter()
+        .fold(0_u32, |sum, row| sum.saturating_add(row.pages)))
+}
+
+fn report_bridge_diagnostic(diagnostic: BridgeDiagnostic) {
+    eprintln!("PaddleDesk event bridge: {}", diagnostic.message());
 }
 
 fn mock_services() -> HashMap<model::ServiceId, Arc<dyn api::OcrService>> {
@@ -57,25 +138,14 @@ fn spawn_event_bridge(
 ) {
     tauri::async_runtime::spawn(async move {
         while let Some(event) = events.recv().await {
-            let completed = matches!(event, queue::QueueEvent::Done { .. });
-            let _ = app_handle.emit(task_event_name(&event), event);
-            if completed {
-                emit_usage(&app_handle, &store);
-            }
+            forward_event(
+                &event,
+                || load_today_pages(&store),
+                |name, payload| app_handle.emit(name, payload).map_err(|_| ()),
+                report_bridge_diagnostic,
+            );
         }
     });
-}
-
-fn emit_usage(app_handle: &tauri::AppHandle, store: &Arc<Mutex<storage::Store>>) {
-    let today_pages = store.lock().ok().and_then(|store| {
-        store.usage_since(1).ok().map(|rows| {
-            rows.into_iter()
-                .fold(0_u32, |sum, row| sum.saturating_add(row.pages))
-        })
-    });
-    if let Some(today_pages) = today_pages {
-        let _ = app_handle.emit("usage:updated", UsageUpdated { today_pages });
-    }
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -136,7 +206,7 @@ mod tests {
     use crate::{model::OcrError, queue::QueueEvent};
 
     #[test]
-    fn event_names_match_ipc_contract() {
+    fn task_payloads_match_ipc_contract_exactly() {
         let events = [
             (
                 QueueEvent::Progress {
@@ -146,20 +216,143 @@ mod tests {
                     total: 0,
                 },
                 "task:progress",
+                serde_json::json!({"id": "1", "stage": "uploading", "page": 0, "total": 0}),
             ),
-            (QueueEvent::Done { id: "1".into() }, "task:done"),
+            (
+                QueueEvent::Done { id: "1".into() },
+                "task:done",
+                serde_json::json!({"id": "1"}),
+            ),
             (
                 QueueEvent::Failed {
                     id: "1".into(),
                     error: OcrError::Auth,
                 },
                 "task:failed",
+                serde_json::json!({
+                    "id": "1",
+                    "kind": "Auth",
+                    "message": "token 无效或过期",
+                }),
             ),
-            (QueueEvent::Canceled { id: "1".into() }, "task:canceled"),
+            (
+                QueueEvent::Canceled { id: "1".into() },
+                "task:canceled",
+                serde_json::json!({"id": "1"}),
+            ),
         ];
 
-        for (event, expected) in events {
-            assert_eq!(task_event_name(&event), expected);
+        for (event, expected_name, expected_payload) in events {
+            let (name, payload) = task_ipc_event(&event);
+            assert_eq!(name, expected_name);
+            assert_eq!(payload, expected_payload);
         }
+    }
+
+    #[test]
+    fn failed_payload_maps_every_error_kind_exactly() {
+        let errors = [
+            (OcrError::Auth, "Auth", "token 无效或过期"),
+            (OcrError::Quota, "Quota", "今日额度已用尽"),
+            (
+                OcrError::Network("offline".into()),
+                "Network",
+                "网络错误: offline",
+            ),
+            (OcrError::Server("503".into()), "Server", "服务端错误: 503"),
+            (
+                OcrError::Parse("bad json".into()),
+                "Parse",
+                "响应解析失败: bad json",
+            ),
+        ];
+
+        for (error, kind, message) in errors {
+            let (_, payload) = task_ipc_event(&QueueEvent::Failed {
+                id: "task".into(),
+                error,
+            });
+            assert_eq!(
+                payload,
+                serde_json::json!({"id": "task", "kind": kind, "message": message})
+            );
+        }
+    }
+
+    #[test]
+    fn usage_payload_matches_ipc_contract_exactly() {
+        assert_eq!(
+            serde_json::to_value(UsageUpdated { today_pages: 7 }).unwrap(),
+            serde_json::json!({"today_pages": 7})
+        );
+    }
+
+    #[test]
+    fn bridge_reports_task_and_usage_emit_failures() {
+        let mut task_diagnostics = Vec::new();
+        forward_event(
+            &QueueEvent::Progress {
+                id: "task".into(),
+                stage: "uploading".into(),
+                page: 0,
+                total: 0,
+            },
+            || Ok(0),
+            |_, _| Err(()),
+            |diagnostic| task_diagnostics.push(diagnostic),
+        );
+        assert_eq!(task_diagnostics, [BridgeDiagnostic::TaskEmit]);
+
+        let mut usage_diagnostics = Vec::new();
+        forward_event(
+            &QueueEvent::Done { id: "task".into() },
+            || Ok(3),
+            |name, _| (name != "usage:updated").then_some(()).ok_or(()),
+            |diagnostic| usage_diagnostics.push(diagnostic),
+        );
+        assert_eq!(usage_diagnostics, [BridgeDiagnostic::UsageEmit]);
+    }
+
+    #[test]
+    fn bridge_reports_usage_loader_failures() {
+        for failure in [BridgeDiagnostic::UsageLock, BridgeDiagnostic::UsageQuery] {
+            let mut diagnostics = Vec::new();
+            forward_event(
+                &QueueEvent::Done { id: "task".into() },
+                || Err(failure),
+                |_, _| Ok(()),
+                |diagnostic| diagnostics.push(diagnostic),
+            );
+            assert_eq!(diagnostics, [failure]);
+        }
+    }
+
+    #[test]
+    fn usage_loader_distinguishes_lock_and_query_failures() {
+        let directory = tempfile::tempdir().unwrap();
+        let lock_store = Arc::new(Mutex::new(
+            storage::Store::open(&directory.path().join("lock.db")).unwrap(),
+        ));
+        let poisoned = lock_store.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoned.lock().unwrap();
+            panic!("poison usage lock");
+        })
+        .join();
+        assert_eq!(
+            load_today_pages(&lock_store),
+            Err(BridgeDiagnostic::UsageLock)
+        );
+
+        let query_path = directory.path().join("query.db");
+        let query_store = Arc::new(Mutex::new(storage::Store::open(&query_path).unwrap()));
+        rusqlite::Connection::open(&query_path)
+            .unwrap()
+            .execute("DROP TABLE usage", [])
+            .unwrap();
+        assert_eq!(
+            load_today_pages(&query_store),
+            Err(BridgeDiagnostic::UsageQuery)
+        );
     }
 }

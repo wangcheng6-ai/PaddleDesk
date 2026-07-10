@@ -155,6 +155,11 @@ struct CallbackStalledOcr {
     release_callback: Arc<tokio::sync::Notify>,
 }
 
+struct FailOnceAfterRelease {
+    release_first: Arc<tokio::sync::Notify>,
+    calls: AtomicU32,
+}
+
 #[async_trait::async_trait]
 impl OcrService for CallbackStalledOcr {
     fn id(&self) -> ServiceId {
@@ -170,6 +175,31 @@ impl OcrService for CallbackStalledOcr {
         self.release_callback.notified().await;
         progress(1, 1);
         std::future::pending().await
+    }
+}
+
+#[async_trait::async_trait]
+impl OcrService for FailOnceAfterRelease {
+    fn id(&self) -> ServiceId {
+        ServiceId::Vl16
+    }
+
+    async fn parse(
+        &self,
+        _input: &InputDoc,
+        _options: &ParseOptions,
+        progress: ProgressFn,
+    ) -> Result<RecognitionResult, OcrError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            self.release_first.notified().await;
+            return Err(OcrError::Auth);
+        }
+        progress(1, 1);
+        Ok(RecognitionResult {
+            markdown: "retried".into(),
+            page_count: 1,
+            pages: vec![],
+        })
     }
 }
 
@@ -313,6 +343,48 @@ async fn disabled_result_persistence_keeps_lifecycle_without_history() {
 }
 
 #[tokio::test]
+async fn privacy_policy_is_snapshotted_when_each_task_is_admitted() {
+    let (queue, store, mut events) =
+        setup_service_with_persistence(Arc::new(MockOcr::new()), 0, false).await;
+    queue.submit(NewTask {
+        id: "private".into(),
+        service: ServiceId::Vl16,
+        input_path: "private.png".into(),
+        options_json: "{}".into(),
+    });
+
+    queue.set_persist_results(true);
+    queue.semaphore.add_permits(1);
+    assert!(matches!(
+        terminal(&mut events).await,
+        QueueEvent::Done { id } if id == "private"
+    ));
+    assert!(store
+        .lock()
+        .unwrap()
+        .get_result("private")
+        .unwrap()
+        .is_none());
+
+    queue.submit(NewTask {
+        id: "public".into(),
+        service: ServiceId::Vl16,
+        input_path: "public.png".into(),
+        options_json: "{}".into(),
+    });
+    assert!(matches!(
+        terminal(&mut events).await,
+        QueueEvent::Done { id } if id == "public"
+    ));
+    assert!(store
+        .lock()
+        .unwrap()
+        .get_result("public")
+        .unwrap()
+        .is_some());
+}
+
+#[tokio::test]
 async fn auth_error_fails_immediately_no_retry() {
     let svc = MockOcr::failing(99, OcrError::Auth);
     let probe = svc.clone();
@@ -384,6 +456,48 @@ async fn manual_retry_only_restarts_requested_failed_task() {
         store.list_tasks(Some("failed")).unwrap()[0].id,
         "leave-failed"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn failed_event_is_published_only_after_immediate_retry_is_safe() {
+    let release_first = Arc::new(tokio::sync::Notify::new());
+    let (queue, _store, mut events) = setup_service(
+        Arc::new(FailOnceAfterRelease {
+            release_first: release_first.clone(),
+            calls: AtomicU32::new(0),
+        }),
+        1,
+    )
+    .await;
+    queue.submit(NewTask {
+        id: "retry-now".into(),
+        service: ServiceId::Vl16,
+        input_path: "retry.png".into(),
+        options_json: "{}".into(),
+    });
+    wait_for_stage(&mut events, "uploading").await;
+
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+    let release_event = Arc::new(Barrier::new(2));
+    *queue.event_probe.lock().unwrap() = Some((entered_tx, release_event.clone()));
+    release_first.notify_one();
+    entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    let was_active_before_publish = queue.active.lock().unwrap().contains("retry-now");
+    release_event.wait();
+
+    assert!(
+        !was_active_before_publish,
+        "Failed was published before active cleanup"
+    );
+    assert!(matches!(
+        terminal(&mut events).await,
+        QueueEvent::Failed { id, .. } if id == "retry-now"
+    ));
+    queue.retry("retry-now").unwrap();
+    assert!(matches!(
+        terminal(&mut events).await,
+        QueueEvent::Done { id } if id == "retry-now"
+    ));
 }
 
 #[tokio::test]
@@ -509,12 +623,15 @@ async fn resume_claim_waits_for_active_cleanup_before_snapshot() {
     store
         .lock()
         .unwrap()
-        .insert_task(&NewTask {
-            id: "old".into(),
-            service: ServiceId::Vl16,
-            input_path: "old.png".into(),
-            options_json: "{}".into(),
-        })
+        .insert_task(
+            &NewTask {
+                id: "old".into(),
+                service: ServiceId::Vl16,
+                input_path: "old.png".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
         .unwrap();
     assert_resume_claim_handshake(&q, &store);
     assert_eq!(service_probe.call_count(), 0);
@@ -549,12 +666,15 @@ async fn resume_picks_up_unfinished() {
     store
         .lock()
         .unwrap()
-        .insert_task(&NewTask {
-            id: "old".into(),
-            service: ServiceId::Vl16,
-            input_path: "b.png".into(),
-            options_json: "{}".into(),
-        })
+        .insert_task(
+            &NewTask {
+                id: "old".into(),
+                service: ServiceId::Vl16,
+                input_path: "b.png".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
         .unwrap();
     q.resume();
     match terminal(&mut rx).await {

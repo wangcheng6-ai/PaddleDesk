@@ -278,6 +278,33 @@ button:focus-visible {
   color: var(--color-danger);
 }
 
+.drop-zone-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.drop-zone-alert span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.drop-zone-alert button {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid currentcolor;
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .drop-zone-mark {
   display: block;
   width: 54px;

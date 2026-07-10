@@ -84,7 +84,7 @@ export function DropZone({ onPaths }: DropZoneProps) {
         {t("actions.chooseFiles")}
       </button>
       {registrationError && (
-        <div role="alert">
+        <div className="drop-zone-alert" role="alert">
           <span>{t("home.dropRegistrationFailed")}</span>
           <button
             type="button"

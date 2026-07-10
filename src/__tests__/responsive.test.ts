@@ -12,3 +12,9 @@ test("keeps the shell reachable below 800 by 600", () => {
   expect(styles).toMatch(/\.topbar\s*\{[^}]*overflow-x:\s*auto/s);
   expect(styles).toMatch(/\.view-content\s*\{[^}]*overflow:\s*auto/s);
 });
+
+test("lets the drop registration alert wrap in a narrow window", () => {
+  expect(styles).toMatch(
+    /\.drop-zone-alert\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/s,
+  );
+});

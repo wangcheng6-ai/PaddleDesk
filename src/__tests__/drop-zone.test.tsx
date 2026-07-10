@@ -149,6 +149,7 @@ test("retries drop registration without hiding an independent submit error", asy
   const registrationAlert =
     registrationMessage.closest<HTMLElement>('[role="alert"]');
   expect(registrationAlert).not.toBeNull();
+  expect(registrationAlert).toHaveClass("drop-zone-alert");
 
   fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
   expect(await screen.findByText("无法添加文件。")).toBeInTheDocument();

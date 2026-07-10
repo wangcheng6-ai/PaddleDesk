@@ -1,5 +1,6 @@
 pub mod mock;
 pub mod normalize;
+pub mod paddle;
 
 use std::{
     path::PathBuf,

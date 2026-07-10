@@ -34,7 +34,8 @@
     "chooseFiles": "Choose files",
     "capture": "Capture text",
     "captureHint": "Capture text (Ctrl+Alt+S)",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "back": "Back"
   },
   "common": {
     "loading": "Loading…"
@@ -168,6 +169,39 @@
     "clipboardImageUnavailable": "No image is available on the clipboard.",
     "captureFailed": "Screen capture could not be started."
   },
+  "onboarding": {
+    "progress": "Setup step {{step}} of 2",
+    "skip": "Skip for now",
+    "start": "Start setup",
+    "welcome": {
+      "title": "Welcome to PaddleDesk",
+      "subtitle": "Complete two quick steps to start accurate document recognition.",
+      "cloudTitle": "Cloud recognition",
+      "cloudDisclosure": "Images and documents are uploaded to Baidu Cloud for recognition. PaddleDesk makes this explicit.",
+      "tokenStorage": "Your access token stays in Windows Credential Manager. It is never written to files, the database, or frontend storage."
+    },
+    "token": {
+      "title": "Connect PaddleOCR",
+      "subtitle": "Get a free AI Studio access token and validate it immediately.",
+      "step1": "Open the official PaddleOCR task page and sign in to Baidu AI Studio.",
+      "step2": "Follow the page instructions to create or copy an access token.",
+      "step3": "Paste it below. Once validated, recognition is ready to use.",
+      "openStudio": "Open AI Studio",
+      "validate": "Validate and get started",
+      "validating": "Validating…",
+      "invalid": "That token is not valid. Copy it again and retry.",
+      "failed": "The action failed. Check your connection and try again."
+    }
+  },
+  "update": {
+    "badge": "New version",
+    "title": "PaddleDesk {{version}} is available",
+    "bodyFallback": "This release includes improvements and fixes.",
+    "later": "Later",
+    "install": "Update and restart",
+    "installing": "Updating…",
+    "failed": "The update could not be installed. Please try again later."
+  },
   "viewTitles": {
     "home": "Home",
     "viewer": "Result Viewer",
@@ -195,7 +229,8 @@
       "validateToken": "Validate and save",
       "valid": "Token validated and stored securely.",
       "invalid": "The token is invalid.",
-      "failed": "The token could not be validated. Check your connection and try again."
+      "failed": "The token could not be validated. Check your connection and try again.",
+      "openOnboarding": "Open setup guide again"
     },
     "recognition": {
       "title": "Recognition",

@@ -53,7 +53,7 @@ function Choices({
   );
 }
 
-export function Settings() {
+export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }) {
   const { t, i18n } = useTranslation();
   const [settings, setLocalSettings] = useState(defaults);
   const [token, setToken] = useState("");
@@ -137,6 +137,9 @@ export function Settings() {
                 {t(`settings.account.${tokenStatus}`)}
               </span>
             ) : null}
+            <button className="secondary-button" type="button" onClick={onOpenOnboarding}>
+              {t("settings.account.openOnboarding")}
+            </button>
           </section>
 
           <section className="settings-card">

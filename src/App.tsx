@@ -3,8 +3,11 @@ import { useTranslation } from "react-i18next";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
+import { Onboarding } from "./components/Onboarding";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import {
   createTaskFromClipboard,
+  getSettings,
   getUsage,
   onCaptureDone,
   onQueueEvent,
@@ -39,6 +42,22 @@ function App() {
   const [subscriptionFailed, setSubscriptionFailed] = useState(false);
   const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
   const [desktopActionFailed, setDesktopActionFailed] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getSettings().then(
+      (settings) => {
+        if (active) setOnboardingOpen(settings.onboarding_complete !== "1");
+      },
+      () => {
+        if (active) setOnboardingOpen(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -136,7 +155,7 @@ function App() {
     ) : view === "usage" ? (
       <Usage />
     ) : view === "settings" ? (
-      <Settings />
+      <Settings onOpenOnboarding={() => setOnboardingOpen(true)} />
     ) : (
       <h1>{t(titleKeys[view])}</h1>
     );
@@ -170,6 +189,8 @@ function App() {
         )}
         <main className="view-content">{content}</main>
       </section>
+      <Onboarding open={onboardingOpen === true} onClose={() => setOnboardingOpen(false)} />
+      {onboardingOpen === false ? <UpdatePrompt /> : null}
     </div>
   );
 }

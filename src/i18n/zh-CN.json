@@ -34,7 +34,8 @@
     "chooseFiles": "选择文件",
     "capture": "截图识别",
     "captureHint": "截图识别（Ctrl+Alt+S）",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "back": "返回"
   },
   "common": {
     "loading": "正在加载…"
@@ -168,6 +169,39 @@
     "clipboardImageUnavailable": "剪贴板中没有可识别的图片。",
     "captureFailed": "无法启动截图识别。"
   },
+  "onboarding": {
+    "progress": "首启设置，第 {{step}} 步，共 2 步",
+    "skip": "暂时跳过",
+    "start": "开始设置",
+    "welcome": {
+      "title": "欢迎使用 PaddleDesk",
+      "subtitle": "两步完成设置，即可开始高精度文档识别。",
+      "cloudTitle": "使用云端识别",
+      "cloudDisclosure": "图片和文档会上传至百度云端完成识别，PaddleDesk 不会隐瞒这一点。",
+      "tokenStorage": "Access Token 只保存在 Windows 凭据管理器，不会写入文件、数据库或前端存储。"
+    },
+    "token": {
+      "title": "连接 PaddleOCR 服务",
+      "subtitle": "获取免费的 AI Studio Access Token，然后立即验证。",
+      "step1": "打开官方 PaddleOCR 任务页并登录百度 AI Studio。",
+      "step2": "按页面提示创建或复制 Access Token。",
+      "step3": "粘贴到下方；验证成功后即可开始识别。",
+      "openStudio": "打开 AI Studio",
+      "validate": "验证并开始使用",
+      "validating": "正在验证…",
+      "invalid": "Token 无效，请重新复制后再试。",
+      "failed": "操作失败，请检查网络后重试。"
+    }
+  },
+  "update": {
+    "badge": "新版本",
+    "title": "PaddleDesk {{version}} 可用",
+    "bodyFallback": "此版本包含体验改进和问题修复。",
+    "later": "稍后",
+    "install": "更新并重启",
+    "installing": "正在更新…",
+    "failed": "更新安装失败，请稍后重试。"
+  },
   "viewTitles": {
     "home": "主页",
     "viewer": "结果查看器",
@@ -195,7 +229,8 @@
       "validateToken": "验证并保存",
       "valid": "Token 已验证并安全保存。",
       "invalid": "Token 无效。",
-      "failed": "Token 验证失败，请检查网络后重试。"
+      "failed": "Token 验证失败，请检查网络后重试。",
+      "openOnboarding": "重新打开首启向导"
     },
     "recognition": {
       "title": "识别",

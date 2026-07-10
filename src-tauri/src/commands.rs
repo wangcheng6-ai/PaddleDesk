@@ -52,7 +52,9 @@ fn validate_setting_keys(settings: &HashMap<String, String>) -> Result<(), Strin
             "theme" => matches!(value.as_str(), "system" | "light" | "dark"),
             "proxy_mode" => matches!(value.as_str(), "system" | "custom" | "direct"),
             "concurrency" => matches!(value.as_str(), "1" | "2" | "3" | "4"),
-            "privacy_mode" | "autostart" => matches!(value.as_str(), "0" | "1"),
+            "privacy_mode" | "autostart" | "onboarding_complete" => {
+                matches!(value.as_str(), "0" | "1")
+            }
             "default_service" => {
                 matches!(value.as_str(), "vl16" | "pp_ocr_v6" | "structure_v3")
             }
@@ -404,6 +406,7 @@ mod tests {
             HashMap::from([("theme".into(), "sepia".into())]),
             HashMap::from([("proxy_mode".into(), "auto".into())]),
             HashMap::from([("concurrency".into(), "8".into())]),
+            HashMap::from([("onboarding_complete".into(), "yes".into())]),
         ] {
             assert!(validate_setting_keys(&invalid).is_err());
         }

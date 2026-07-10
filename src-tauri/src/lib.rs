@@ -61,7 +61,7 @@ fn task_ipc_event(event: &queue::QueueEvent) -> (&'static str, serde_json::Value
             serde_json::json!({
                 "id": id,
                 "kind": ipc_error_kind(error),
-                "message": error.to_string(),
+                "message": ipc_error_message(error),
             }),
         ),
         queue::QueueEvent::Canceled { id } => ("task:canceled", serde_json::json!({"id": id})),
@@ -75,6 +75,15 @@ fn ipc_error_kind(error: &model::OcrError) -> &'static str {
         model::OcrError::Network(_) => "Network",
         model::OcrError::Server(_) => "Server",
         model::OcrError::Parse(_) => "Parse",
+    }
+}
+
+fn ipc_error_message(error: &model::OcrError) -> &str {
+    match error {
+        model::OcrError::Auth | model::OcrError::Quota => "",
+        model::OcrError::Network(message)
+        | model::OcrError::Server(message)
+        | model::OcrError::Parse(message) => message,
     }
 }
 
@@ -232,7 +241,7 @@ mod tests {
                 serde_json::json!({
                     "id": "1",
                     "kind": "Auth",
-                    "message": "token 无效或过期",
+                    "message": "",
                 }),
             ),
             (
@@ -252,19 +261,11 @@ mod tests {
     #[test]
     fn failed_payload_maps_every_error_kind_exactly() {
         let errors = [
-            (OcrError::Auth, "Auth", "token 无效或过期"),
-            (OcrError::Quota, "Quota", "今日额度已用尽"),
-            (
-                OcrError::Network("offline".into()),
-                "Network",
-                "网络错误: offline",
-            ),
-            (OcrError::Server("503".into()), "Server", "服务端错误: 503"),
-            (
-                OcrError::Parse("bad json".into()),
-                "Parse",
-                "响应解析失败: bad json",
-            ),
+            (OcrError::Auth, "Auth", ""),
+            (OcrError::Quota, "Quota", ""),
+            (OcrError::Network("offline".into()), "Network", "offline"),
+            (OcrError::Server("503".into()), "Server", "503"),
+            (OcrError::Parse("bad json".into()), "Parse", "bad json"),
         ];
 
         for (error, kind, message) in errors {

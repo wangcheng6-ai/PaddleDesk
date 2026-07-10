@@ -56,6 +56,10 @@ pub struct Queue {
     event_probe: Arc<Mutex<Option<TestProbe>>>,
     #[cfg(test)]
     claim_probe: Mutex<Option<TestProbe>>,
+    #[cfg(test)]
+    submit_probe: Mutex<Option<TestProbe>>,
+    #[cfg(test)]
+    terminal_probe: Mutex<Option<TestProbe>>,
 }
 
 impl Queue {
@@ -79,20 +83,31 @@ impl Queue {
             event_probe: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             claim_probe: Mutex::new(None),
+            #[cfg(test)]
+            submit_probe: Mutex::new(None),
+            #[cfg(test)]
+            terminal_probe: Mutex::new(None),
         })
     }
 
     pub fn submit(self: &Arc<Self>, task: NewTask) {
-        let persist_result = self.persist_results.load(Ordering::Acquire);
-        let inserted = self.lock_store().and_then(|store| {
-            store
-                .insert_task(&task, persist_result)
-                .map_err(storage_error)
-        });
-        if let Err(error) = inserted {
-            self.emit_failed(&task.id, error);
-            return;
-        }
+        #[cfg(test)]
+        hit_probe(&self.submit_probe);
+        let persist_result = {
+            let store = match self.lock_store() {
+                Ok(store) => store,
+                Err(error) => {
+                    self.emit_failed(&task.id, error);
+                    return;
+                }
+            };
+            let persist_result = self.persist_results.load(Ordering::Acquire);
+            if let Err(error) = store.insert_task(&task, persist_result) {
+                self.emit_failed(&task.id, storage_error(error));
+                return;
+            }
+            persist_result
+        };
         self.spawn(AdmittedTask {
             task,
             persist_result,
@@ -145,11 +160,31 @@ impl Queue {
 
     pub fn retry(self: &Arc<Self>, id: &str) -> Result<(), OcrError> {
         let task = {
-            let store = self.lock_store()?;
-            store.retry_task(id).map_err(storage_error)?
-        }
-        .ok_or_else(|| OcrError::Parse("task is not failed or does not exist".into()))?;
-        self.spawn(task);
+            let mut active = self
+                .active
+                .lock()
+                .map_err(|_| storage_error("queue state lock poisoned"))?;
+            if !active.insert(id.into()) {
+                return Err(OcrError::Parse("task is already active".into()));
+            }
+            let retried = self
+                .lock_store()
+                .and_then(|store| store.retry_task(id).map_err(storage_error));
+            match retried {
+                Ok(Some(task)) => task,
+                Ok(None) => {
+                    active.remove(id);
+                    return Err(OcrError::Parse(
+                        "task is not failed or does not exist".into(),
+                    ));
+                }
+                Err(error) => {
+                    active.remove(id);
+                    return Err(error);
+                }
+            }
+        };
+        self.spawn_registered(task);
         Ok(())
     }
 
@@ -176,9 +211,7 @@ impl Queue {
 
     async fn run(self: Arc<Self>, task: AdmittedTask) {
         let terminal = self.work(&task).await;
-        if let Ok(mut active) = self.active.lock() {
-            active.remove(&task.task.id);
-        }
+        let terminal = self.finalize(&task.task.id, terminal);
         if let Some(event) = terminal {
             self.emit(event);
         }
@@ -309,23 +342,41 @@ impl Queue {
     }
 
     fn fail(&self, id: &str, error: OcrError) -> Option<QueueEvent> {
-        let error = match self.lock_store() {
-            Ok(store) => match store.update_status_if_active(id, "failed", None, Some(&error)) {
-                Ok(true) => {
-                    return Some(QueueEvent::Failed {
-                        id: id.into(),
-                        error,
-                    })
-                }
-                Ok(false) => return None,
-                Err(error) => storage_error(error),
-            },
-            Err(error) => error,
-        };
         Some(QueueEvent::Failed {
             id: id.into(),
             error,
         })
+    }
+
+    fn finalize(&self, task_id: &str, terminal: Option<QueueEvent>) -> Option<QueueEvent> {
+        let mut active = match self.active.lock() {
+            Ok(active) => active,
+            Err(_) => {
+                return Some(QueueEvent::Failed {
+                    id: task_id.into(),
+                    error: storage_error("queue state lock poisoned"),
+                })
+            }
+        };
+        let terminal = match terminal {
+            Some(QueueEvent::Failed { id, error }) => match self.lock_store() {
+                Ok(store) => match store.update_status_if_active(&id, "failed", None, Some(&error))
+                {
+                    Ok(true) => Some(QueueEvent::Failed { id, error }),
+                    Ok(false) => None,
+                    Err(error) => Some(QueueEvent::Failed {
+                        id,
+                        error: storage_error(error),
+                    }),
+                },
+                Err(error) => Some(QueueEvent::Failed { id, error }),
+            },
+            terminal => terminal,
+        };
+        #[cfg(test)]
+        hit_probe(&self.terminal_probe);
+        active.remove(task_id);
+        terminal
     }
 
     fn emit(&self, event: QueueEvent) {

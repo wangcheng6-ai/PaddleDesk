@@ -384,6 +384,39 @@ async fn privacy_policy_is_snapshotted_when_each_task_is_admitted() {
         .is_some());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn settings_commit_before_task_insert_controls_privacy_snapshot() {
+    let (queue, store, _events) =
+        setup_service_with_persistence(Arc::new(MockOcr::new()), 0, true).await;
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+    let release = Arc::new(Barrier::new(2));
+    let submit = {
+        let store_guard = store.lock().unwrap();
+        *queue.submit_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+        let submit_queue = queue.clone();
+        let submit = tokio::spawn(async move {
+            submit_queue.submit(NewTask {
+                id: "private-after-commit".into(),
+                service: ServiceId::Vl16,
+                input_path: "private.png".into(),
+                options_json: "{}".into(),
+            });
+        });
+        entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+        store_guard
+            .set_settings(&HashMap::from([("privacy_mode".into(), "1".into())]))
+            .unwrap();
+        queue.set_persist_results(false);
+        submit
+    };
+    release.wait();
+    submit.await.unwrap();
+
+    let tasks = store.lock().unwrap().unfinished_tasks().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert!(!tasks[0].persist_result);
+}
+
 #[tokio::test]
 async fn auth_error_fails_immediately_no_retry() {
     let svc = MockOcr::failing(99, OcrError::Auth);
@@ -498,6 +531,52 @@ async fn failed_event_is_published_only_after_immediate_retry_is_safe() {
         terminal(&mut events).await,
         QueueEvent::Done { id } if id == "retry-now"
     ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn retry_from_failed_poll_window_always_starts_a_worker() {
+    let (queue, store, mut events) = setup(MockOcr::failing(1, OcrError::Auth), 1).await;
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+    let release = Arc::new(Barrier::new(2));
+    *queue.terminal_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+    queue.submit(NewTask {
+        id: "retry-from-poll".into(),
+        service: ServiceId::Vl16,
+        input_path: "retry.png".into(),
+        options_json: "{}".into(),
+    });
+
+    entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    assert_eq!(
+        store.lock().unwrap().list_tasks(Some("failed")).unwrap()[0].id,
+        "retry-from-poll"
+    );
+    let (retry_started_tx, retry_started_rx) = std::sync::mpsc::sync_channel(0);
+    let retry_queue = queue.clone();
+    let retry = tokio::spawn(async move {
+        retry_started_tx.send(()).unwrap();
+        retry_queue.retry("retry-from-poll")
+    });
+    retry_started_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    release.wait();
+    retry.await.unwrap().unwrap();
+
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            if matches!(
+                events.recv().await.expect("queue event channel closed"),
+                QueueEvent::Done { id } if id == "retry-from-poll"
+            ) {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("retry left a pending task without a worker");
+    assert_eq!(
+        store.lock().unwrap().list_tasks(Some("done")).unwrap()[0].id,
+        "retry-from-poll"
+    );
 }
 
 #[tokio::test]

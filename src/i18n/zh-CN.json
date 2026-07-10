@@ -1,0 +1,39 @@
+{
+  "app": {
+    "mark": "P",
+    "name": "PaddleDesk"
+  },
+  "nav": {
+    "label": "主导航",
+    "home": "主页",
+    "viewer": "结果查看器",
+    "queue": "任务队列",
+    "history": "历史记录",
+    "usage": "用量",
+    "settings": "设置"
+  },
+  "services": {
+    "selectorLabel": "识别服务",
+    "vl16": "PaddleOCR-VL-1.6",
+    "ppOcrV6": "PP-OCRv6",
+    "structureV3": "PP-StructureV3"
+  },
+  "usage": {
+    "today": "今日用量",
+    "summary": "{{used}} / {{quota}} 页",
+    "meterLabel": "今日已用 {{used}} 页，共 {{quota}} 页"
+  },
+  "viewTitles": {
+    "home": "主页",
+    "viewer": "结果查看器",
+    "queue": "任务队列",
+    "history": "历史记录",
+    "usage": "用量",
+    "settings": "设置"
+  },
+  "settings": {
+    "proxy": {
+      "direct": "强制直连"
+    }
+  }
+}

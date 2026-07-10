@@ -1,0 +1,39 @@
+{
+  "app": {
+    "mark": "P",
+    "name": "PaddleDesk"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "home": "Home",
+    "viewer": "Result Viewer",
+    "queue": "Task Queue",
+    "history": "History",
+    "usage": "Usage",
+    "settings": "Settings"
+  },
+  "services": {
+    "selectorLabel": "Recognition service",
+    "vl16": "PaddleOCR-VL-1.6",
+    "ppOcrV6": "PP-OCRv6",
+    "structureV3": "PP-StructureV3"
+  },
+  "usage": {
+    "today": "Today's usage",
+    "summary": "{{used}} / {{quota}} pages",
+    "meterLabel": "{{used}} of {{quota}} pages used today"
+  },
+  "viewTitles": {
+    "home": "Home",
+    "viewer": "Result Viewer",
+    "queue": "Task Queue",
+    "history": "History",
+    "usage": "Usage",
+    "settings": "Settings"
+  },
+  "settings": {
+    "proxy": {
+      "direct": "Direct connection"
+    }
+  }
+}

@@ -1,1 +1,227 @@
 @import "tailwindcss";
+
+@theme {
+  --color-brand: #2b36e8;
+  --color-brand-deep: #1b22a8;
+  --color-aqua: #0fb5ba;
+  --color-ink: #171a21;
+  --color-ink-soft: #4a5061;
+  --color-ink-muted: #5f6677;
+  --color-paper: #eef0f5;
+  --color-surface: #ffffff;
+  --color-wash: #f6f7fb;
+  --color-line: #dfe3ec;
+}
+
+:root {
+  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --shadow-small: 0 1px 2px rgb(23 26 33 / 5%),
+    0 4px 16px rgb(23 26 33 / 6%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 800px;
+  min-height: 600px;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-brand) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 18px 10px 12px;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-line);
+  background: var(--color-wash);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 6px 18px;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.brand-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: white;
+  background: linear-gradient(135deg, var(--color-brand), var(--color-aqua));
+  box-shadow: 0 6px 18px rgb(43 54 232 / 22%);
+}
+
+.navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nav-button {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  color: var(--color-ink-soft);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-button:hover {
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.nav-button[data-active="true"] {
+  border-color: var(--color-line);
+  color: var(--color-brand-deep);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-small);
+  font-weight: 700;
+}
+
+.sidebar-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: auto 4px 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface);
+}
+
+.sidebar-usage strong {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+}
+
+.usage-label {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.usage-meter {
+  height: 6px;
+  margin-top: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-line);
+}
+
+.usage-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-brand), var(--color-aqua));
+}
+
+.workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  padding: 12px 20px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.service-selector {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-wash);
+}
+
+.service-selector button {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-ink-soft);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.service-selector button:hover {
+  color: var(--color-ink);
+}
+
+.service-selector button[aria-pressed="true"] {
+  color: var(--color-brand-deep);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-small);
+  font-weight: 700;
+}
+
+.view-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  padding: 24px;
+  overflow: auto;
+  background: var(--color-surface);
+}
+
+.view-content h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+}

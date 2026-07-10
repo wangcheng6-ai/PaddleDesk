@@ -1,5 +1,7 @@
+#[cfg(test)]
+use std::sync::atomic::AtomicU32 as CallCounter;
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicU32 as FailureCounter, Ordering},
     Arc,
 };
 
@@ -8,28 +10,32 @@ use crate::model::*;
 
 #[derive(Clone, Default)]
 pub struct MockOcr {
-    remaining_failures: Arc<AtomicU32>,
+    remaining_failures: Arc<FailureCounter>,
     err: Option<OcrError>,
-    calls: Arc<AtomicU32>,
+    #[cfg(test)]
+    calls: Arc<CallCounter>,
 }
 
 impl MockOcr {
     pub fn new() -> Self {
         Self {
-            remaining_failures: Arc::new(AtomicU32::new(0)),
+            remaining_failures: Arc::new(FailureCounter::new(0)),
             err: None,
+            #[cfg(test)]
             calls: Arc::default(),
         }
     }
 
     pub fn failing(times: u32, err: OcrError) -> Self {
         Self {
-            remaining_failures: Arc::new(AtomicU32::new(times)),
+            remaining_failures: Arc::new(FailureCounter::new(times)),
             err: Some(err),
+            #[cfg(test)]
             calls: Arc::default(),
         }
     }
 
+    #[cfg(test)]
     pub fn call_count(&self) -> u32 {
         self.calls.load(Ordering::SeqCst)
     }
@@ -64,6 +70,7 @@ impl OcrService for MockOcr {
         _o: &ParseOptions,
         progress: ProgressFn,
     ) -> Result<RecognitionResult, OcrError> {
+        #[cfg(test)]
         self.calls.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         if self

@@ -81,6 +81,52 @@ async fn setup_service(
     )
 }
 
+fn assert_resume_claim_handshake(q: &Arc<Queue>, store: &Arc<Mutex<Store>>) {
+    q.active.lock().unwrap().insert("old".into());
+    let snapshot_guard = store.lock().unwrap();
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+    let release = Arc::new(Barrier::new(2));
+    *q.claim_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+    let claim_queue = q.clone();
+    let claim = std::thread::spawn(move || claim_queue.resume());
+    if let Err(error) = entered_rx.recv_timeout(TEST_TIMEOUT) {
+        drop(snapshot_guard);
+        entered_rx
+            .recv_timeout(TEST_TIMEOUT)
+            .expect("claim probe did not fire after Store release");
+        release.wait();
+        claim.join().unwrap();
+        panic!("claim probe did not fire before unfinished snapshot: {error}");
+    }
+    let active_locked = matches!(q.active.try_lock(), Err(TryLockError::WouldBlock));
+    if !active_locked {
+        drop(snapshot_guard);
+        release.wait();
+        claim.join().unwrap();
+        panic!("active lock was not held before unfinished snapshot");
+    }
+
+    let (cleanup_started_tx, cleanup_started_rx) = std::sync::mpsc::sync_channel(0);
+    let cleanup_queue = q.clone();
+    let cleanup = std::thread::spawn(move || {
+        let active_locked = matches!(
+            cleanup_queue.active.try_lock(),
+            Err(TryLockError::WouldBlock)
+        );
+        cleanup_started_tx.send(active_locked).unwrap();
+        cleanup_queue.active.lock().unwrap().remove("old");
+    });
+    let cleanup_waited_for_active = cleanup_started_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    drop(snapshot_guard);
+    release.wait();
+    claim.join().unwrap();
+    cleanup.join().unwrap();
+    assert!(
+        cleanup_waited_for_active,
+        "active lock was released before registration"
+    );
+}
+
 struct TrackingOcr {
     active: Arc<AtomicU32>,
     max_active: Arc<AtomicU32>,
@@ -382,51 +428,7 @@ async fn resume_claim_waits_for_active_cleanup_before_snapshot() {
             options_json: "{}".into(),
         })
         .unwrap();
-    q.active.lock().unwrap().insert("old".into());
-
-    let snapshot_guard = store.lock().unwrap();
-    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
-    let release = Arc::new(Barrier::new(2));
-    *q.claim_probe.lock().unwrap() = Some((entered_tx, release.clone()));
-    let claim_queue = q.clone();
-    let claim = std::thread::spawn(move || claim_queue.resume());
-    if let Err(error) = entered_rx.recv_timeout(TEST_TIMEOUT) {
-        drop(snapshot_guard);
-        entered_rx
-            .recv_timeout(TEST_TIMEOUT)
-            .expect("claim probe did not fire after Store release");
-        release.wait();
-        claim.join().unwrap();
-        panic!("claim probe did not fire before unfinished snapshot: {error}");
-    }
-    let active_locked = matches!(q.active.try_lock(), Err(TryLockError::WouldBlock));
-    if !active_locked {
-        drop(snapshot_guard);
-        release.wait();
-        claim.join().unwrap();
-        panic!("active lock was not held before unfinished snapshot");
-    }
-
-    let (cleanup_started_tx, cleanup_started_rx) = std::sync::mpsc::sync_channel(0);
-    let cleanup_queue = q.clone();
-    let cleanup = std::thread::spawn(move || {
-        let active_locked = matches!(
-            cleanup_queue.active.try_lock(),
-            Err(TryLockError::WouldBlock)
-        );
-        cleanup_started_tx.send(active_locked).unwrap();
-        cleanup_queue.active.lock().unwrap().remove("old");
-    });
-    let cleanup_waited_for_active = cleanup_started_rx.recv_timeout(TEST_TIMEOUT).unwrap();
-    drop(snapshot_guard);
-    release.wait();
-
-    claim.join().unwrap();
-    cleanup.join().unwrap();
-    assert!(
-        cleanup_waited_for_active,
-        "active lock was released before registration"
-    );
+    assert_resume_claim_handshake(&q, &store);
     assert_eq!(service_probe.call_count(), 0);
     assert!(rx.try_recv().is_err(), "resume started a duplicate worker");
 }

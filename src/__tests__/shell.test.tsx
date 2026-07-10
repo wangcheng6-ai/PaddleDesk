@@ -52,6 +52,19 @@ const flushPromises = async () => {
   for (let index = 0; index < 10; index += 1) await Promise.resolve();
 };
 
+test("renders the approved brand icon instead of a letter placeholder", () => {
+  render(<App />);
+
+  const brand = screen.getByText("PaddleDesk").closest(".brand");
+  const icon = brand?.querySelector("img.brand-mark");
+
+  expect(icon).toBeInstanceOf(HTMLImageElement);
+  expect(icon?.getAttribute("src")).toContain("paddledesk-icon.png");
+  expect(icon).toHaveAttribute("alt", "");
+  expect(icon).toHaveAttribute("aria-hidden", "true");
+  expect(brand?.querySelector("span.brand-mark")).toBeNull();
+});
+
 test("renders six semantic nav buttons and switches the current view", () => {
   render(<App />);
 

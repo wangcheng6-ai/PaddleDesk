@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 
+import brandIcon from "../assets/paddledesk-icon.png";
 import { useApp, type View } from "../stores/app";
 
 const navigation: ReadonlyArray<{ view: View; key: string }> = [
@@ -19,9 +20,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          {t("app.mark")}
-        </span>
+        <img className="brand-mark" src={brandIcon} alt="" aria-hidden="true" />
         <span>{t("app.name")}</span>
       </div>
 

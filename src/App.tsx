@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
-import { onQueueEvent } from "./lib/ipc";
+import { getUsage, onQueueEvent, onUsageUpdated } from "./lib/ipc";
 import { useApp, type View } from "./stores/app";
 import { Home } from "./views/Home";
 import { History } from "./views/History";
@@ -25,6 +25,7 @@ function App() {
   const { t } = useTranslation();
   const view = useApp((state) => state.view);
   const upsertTask = useApp((state) => state.upsertTask);
+  const setTodayPages = useApp((state) => state.setTodayPages);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [subscriptionFailed, setSubscriptionFailed] = useState(false);
   const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
@@ -32,29 +33,49 @@ function App() {
   useEffect(() => {
     let disposed = false;
     let cleanup: (() => void) | undefined;
+    let usageRequest = 0;
+    const unlisteners: Array<() => void> = [];
 
-    void onQueueEvent(upsertTask).then(
-      (unlisten) => {
-        if (disposed) unlisten();
-        else {
-          cleanup = unlisten;
-          setSubscriptionReady(true);
-          setSubscriptionFailed(false);
-        }
-      },
-      () => {
-        if (!disposed) {
-          setSubscriptionReady(false);
-          setSubscriptionFailed(true);
-        }
-      },
-    );
+    const refreshUsage = async () => {
+      const request = ++usageRequest;
+      try {
+        const rows = await getUsage(1);
+        if (disposed || request !== usageRequest) return;
+        const pages = { vl16: 0, pp_ocr_v6: 0, structure_v3: 0 };
+        rows.forEach((row) => {
+          pages[row.service] += row.pages;
+        });
+        setTodayPages(pages);
+        setSubscriptionFailed(false);
+      } catch {
+        if (!disposed && request === usageRequest) setSubscriptionFailed(true);
+      }
+    };
+
+    void (async () => {
+      unlisteners.push(await onQueueEvent(upsertTask));
+      unlisteners.push(await onUsageUpdated(() => void refreshUsage()));
+      if (disposed) {
+        unlisteners.forEach((unlisten) => unlisten());
+      } else {
+        cleanup = () => unlisteners.forEach((unlisten) => unlisten());
+        setSubscriptionReady(true);
+        setSubscriptionFailed(false);
+        void refreshUsage();
+      }
+    })().catch(() => {
+      unlisteners.forEach((unlisten) => unlisten());
+      if (!disposed) {
+        setSubscriptionReady(false);
+        setSubscriptionFailed(true);
+      }
+    });
 
     return () => {
       disposed = true;
       cleanup?.();
     };
-  }, [subscriptionAttempt, upsertTask]);
+  }, [setTodayPages, subscriptionAttempt, upsertTask]);
 
   const taskView = view === "home" || view === "queue";
   const content =

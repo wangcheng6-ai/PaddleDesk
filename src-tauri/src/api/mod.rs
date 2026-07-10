@@ -1,3 +1,5 @@
+pub mod credentials;
+#[cfg(test)]
 pub mod mock;
 pub mod normalize;
 pub mod paddle;

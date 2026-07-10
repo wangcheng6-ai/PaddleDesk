@@ -50,6 +50,10 @@ interface IdPayload {
   id: string;
 }
 
+interface UsageUpdatedPayload {
+  today_pages: number;
+}
+
 interface FailedPayload extends IdPayload {
   kind:
     | "Auth"
@@ -167,4 +171,12 @@ export async function onQueueEvent(
     cleaned = true;
     unlisteners.forEach((unlisten) => unlisten());
   };
+}
+
+export async function onUsageUpdated(
+  callback: (todayPages: number) => void,
+): Promise<UnlistenFn> {
+  return listen<UsageUpdatedPayload>("usage:updated", ({ payload }) =>
+    callback(payload.today_pages),
+  );
 }

@@ -1,14 +1,19 @@
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{Arc, MutexGuard},
 };
 
 use tauri::State;
 
 use crate::{
-    api::ParseOptions,
+    api::{
+        credentials,
+        paddle::{PaddleOcr, BASE_URL},
+        ParseOptions,
+    },
     export,
-    model::ServiceId,
+    model::{OcrError, ServiceId},
     queue::Queue,
     storage::{HistoryRow, NewTask, Store, TaskRow, UsageRow},
     AppState,
@@ -76,12 +81,16 @@ fn apply_settings(
     Ok(())
 }
 
-fn validate_token_with(
+async fn validate_token_with(
     token: &str,
+    probe: impl Future<Output = Result<bool, OcrError>>,
     save: impl FnOnce(&str) -> Result<(), String>,
 ) -> Result<bool, String> {
-    save(token)?;
-    Ok(true)
+    let valid = probe.await.map_err(|error| error.to_string())?;
+    if valid {
+        save(token)?;
+    }
+    Ok(valid)
 }
 
 fn is_secret_setting_key(key: &str) -> bool {
@@ -189,22 +198,14 @@ pub fn set_settings(
 }
 
 #[tauri::command]
-pub fn validate_token(token: String) -> Result<bool, String> {
-    validate_token_with(&token, save_token)
-}
-
-#[cfg(target_os = "windows")]
-fn save_token(token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new("cc.ccwu.paddledesk", "paddleocr_access_token")
-        .map_err(|error| format!("credential store unavailable: {error}"))?;
-    entry
-        .set_password(token)
-        .map_err(|error| format!("credential store write failed: {error}"))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn save_token(_token: &str) -> Result<(), String> {
-    Err("Windows Credential Manager is unavailable".into())
+pub async fn validate_token(token: String, state: State<'_, AppState>) -> Result<bool, String> {
+    let proxy = (state.proxy)().map_err(|error| error.to_string())?;
+    validate_token_with(
+        &token,
+        PaddleOcr::probe_token(BASE_URL, &token, proxy),
+        |token| credentials::save_token(token).map_err(|error| error.to_string()),
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -265,23 +266,41 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn validate_token_writes_injected_store_before_returning_true() {
+    #[tokio::test]
+    async fn validate_token_writes_only_after_a_valid_probe() {
         let mut stored = None;
 
-        let valid = validate_token_with("test-secret", |token| {
+        let valid = validate_token_with("test-secret", async { Ok(true) }, |token| {
             stored = Some(token.to_string());
             Ok(())
         })
+        .await
         .unwrap();
 
         assert!(valid);
         assert_eq!(stored.as_deref(), Some("test-secret"));
     }
 
-    #[test]
-    fn validate_token_propagates_credential_store_failure() {
-        let result = validate_token_with("test-secret", |_| Err("store unavailable".into()));
+    #[tokio::test]
+    async fn invalid_token_is_not_saved() {
+        let mut saved = false;
+        let valid = validate_token_with("test-secret", async { Ok(false) }, |_| {
+            saved = true;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        assert!(!valid);
+        assert!(!saved);
+    }
+
+    #[tokio::test]
+    async fn validate_token_propagates_credential_store_failure() {
+        let result = validate_token_with("test-secret", async { Ok(true) }, |_| {
+            Err("store unavailable".into())
+        })
+        .await;
 
         assert_eq!(result.unwrap_err(), "store unavailable");
     }

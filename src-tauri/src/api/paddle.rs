@@ -12,7 +12,7 @@ use super::{
 };
 use crate::model::{OcrError, RecognitionResult, ServiceId};
 
-const BASE_URL: &str = "https://paddleocr.aistudio-app.com";
+pub(crate) const BASE_URL: &str = "https://paddleocr.aistudio-app.com";
 const JOBS_PATH: &str = "/api/v2/ocr/jobs";
 const SEGMENT_SIZE: usize = 100;
 

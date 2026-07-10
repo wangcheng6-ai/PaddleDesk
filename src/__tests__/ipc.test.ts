@@ -14,6 +14,7 @@ import {
   getSettings,
   listTasks,
   onQueueEvent,
+  onUsageUpdated,
   retryTask,
 } from "../lib/ipc";
 import { useApp } from "../stores/app";
@@ -155,4 +156,19 @@ test("cleans completed subscriptions before rejecting a later listen failure", a
 
   await expect(onQueueEvent(vi.fn())).rejects.toBe(failure);
   expect(firstUnlisten).toHaveBeenCalledOnce();
+});
+
+test("forwards live usage events", async () => {
+  const callback = vi.fn();
+  const unlisten = vi.fn();
+  listenMock.mockResolvedValue(unlisten);
+
+  const cleanup = await onUsageUpdated(callback);
+  const handler = listenMock.mock.calls[0][1];
+  handler({ payload: { today_pages: 7 } });
+
+  expect(listenMock).toHaveBeenCalledWith("usage:updated", expect.any(Function));
+  expect(callback).toHaveBeenCalledWith(7);
+  cleanup();
+  expect(unlisten).toHaveBeenCalledOnce();
 });

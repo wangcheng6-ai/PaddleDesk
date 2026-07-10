@@ -52,6 +52,7 @@ beforeEach(async () => {
       return [
         { date: "2026-07-10", service: "vl16", pages: 12 },
         { date: "2026-07-10", service: "pp_ocr_v6", pages: 3 },
+        { date: "2026-07-09", service: "vl16", pages: 5000 },
       ];
     }
     if (command === "set_settings") return null;
@@ -63,6 +64,7 @@ beforeEach(async () => {
     service: "vl16",
     tasks: [],
     selectedTaskId: null,
+    todayPages: { vl16: 0, pp_ocr_v6: 0, structure_v3: 0 },
   });
   await initI18n();
 });

@@ -18,6 +18,7 @@ pub mod storage;
 pub struct AppState {
     pub(crate) store: Arc<Mutex<storage::Store>>,
     pub(crate) queue: Arc<queue::Queue>,
+    pub(crate) proxy: api::paddle::ProxyProvider,
 }
 
 #[derive(Clone, Serialize)]
@@ -128,7 +129,10 @@ fn report_bridge_diagnostic(diagnostic: BridgeDiagnostic) {
     eprintln!("PaddleDesk event bridge: {}", diagnostic.message());
 }
 
-fn mock_services() -> HashMap<model::ServiceId, Arc<dyn api::OcrService>> {
+fn real_services(
+    token: api::paddle::TokenProvider,
+    proxy: api::paddle::ProxyProvider,
+) -> HashMap<model::ServiceId, Arc<dyn api::OcrService>> {
     [
         model::ServiceId::Vl16,
         model::ServiceId::PpOcrV6,
@@ -138,10 +142,49 @@ fn mock_services() -> HashMap<model::ServiceId, Arc<dyn api::OcrService>> {
     .map(|id| {
         (
             id,
-            Arc::new(api::mock::MockOcr::new()) as Arc<dyn api::OcrService>,
+            Arc::new(api::paddle::PaddleOcr::new(
+                id,
+                token.clone(),
+                proxy.clone(),
+            )) as Arc<dyn api::OcrService>,
         )
     })
     .collect()
+}
+
+fn proxy_provider(store: Arc<Mutex<storage::Store>>) -> api::paddle::ProxyProvider {
+    Arc::new(move || {
+        let store = store
+            .lock()
+            .map_err(|_| model::OcrError::Parse("store lock poisoned".into()))?;
+        let mode = store
+            .get_setting("proxy_mode")
+            .map_err(|error| model::OcrError::Parse(error.to_string()))?
+            .unwrap_or_else(|| "system".into());
+        match mode.as_str() {
+            "system" => Ok(api::paddle::ProxyConfig::System),
+            "direct" => Ok(api::paddle::ProxyConfig::Direct),
+            "custom" => store
+                .get_setting("proxy_address")
+                .map_err(|error| model::OcrError::Parse(error.to_string()))?
+                .filter(|address| !address.trim().is_empty())
+                .map(api::paddle::ProxyConfig::Custom)
+                .ok_or_else(|| {
+                    model::OcrError::InvalidInput("custom proxy address is empty".into())
+                }),
+            _ => Err(model::OcrError::InvalidInput(
+                "invalid stored proxy mode".into(),
+            )),
+        }
+    })
+}
+
+fn startup_concurrency(store: &storage::Store) -> anyhow::Result<usize> {
+    Ok(store
+        .get_setting("concurrency")?
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(2)
+        .clamp(1, 4))
 }
 
 fn spawn_event_bridge(
@@ -167,17 +210,22 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(Mutex::new(storage::Store::open(
         &data_dir.join("paddledesk.db"),
     )?));
-    let persist_results = store
-        .lock()
-        .map_err(|_| std::io::Error::other("store lock poisoned"))?
-        .get_setting("privacy_mode")?
-        .as_deref()
-        != Some("1");
+    let (persist_results, concurrency) = {
+        let store = store
+            .lock()
+            .map_err(|_| std::io::Error::other("store lock poisoned"))?;
+        (
+            store.get_setting("privacy_mode")?.as_deref() != Some("1"),
+            startup_concurrency(&store)?,
+        )
+    };
+    let token: api::paddle::TokenProvider = Arc::new(api::credentials::load_token);
+    let proxy = proxy_provider(store.clone());
     let (event_sender, event_receiver) = mpsc::unbounded_channel();
     let queue = queue::Queue::new(
         store.clone(),
-        mock_services(),
-        2,
+        real_services(token, proxy.clone()),
+        concurrency,
         event_sender,
         Duration::from_secs(1),
         persist_results,
@@ -185,6 +233,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(AppState {
         store: store.clone(),
         queue: queue.clone(),
+        proxy,
     });
     spawn_event_bridge(app.handle().clone(), store, event_receiver);
     queue.resume();
@@ -216,6 +265,8 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::{model::OcrError, queue::QueueEvent};
 
@@ -369,6 +420,61 @@ mod tests {
         assert_eq!(
             load_today_pages(&query_store),
             Err(BridgeDiagnostic::UsageQuery)
+        );
+    }
+
+    #[test]
+    fn real_services_cover_all_models() {
+        let token: api::paddle::TokenProvider = Arc::new(|| Ok("test-token".into()));
+        let proxy: api::paddle::ProxyProvider = Arc::new(|| Ok(api::paddle::ProxyConfig::Direct));
+        let services = real_services(token, proxy);
+
+        assert_eq!(services.len(), 3);
+        for id in [
+            model::ServiceId::Vl16,
+            model::ServiceId::PpOcrV6,
+            model::ServiceId::StructureV3,
+        ] {
+            assert_eq!(services.get(&id).unwrap().id(), id);
+        }
+    }
+
+    #[test]
+    fn startup_concurrency_defaults_and_clamps() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = storage::Store::open(&directory.path().join("settings.db")).unwrap();
+        assert_eq!(startup_concurrency(&store).unwrap(), 2);
+
+        store
+            .set_settings(&HashMap::from([("concurrency".into(), "9".into())]))
+            .unwrap();
+        assert_eq!(startup_concurrency(&store).unwrap(), 4);
+        store
+            .set_settings(&HashMap::from([("concurrency".into(), "0".into())]))
+            .unwrap();
+        assert_eq!(startup_concurrency(&store).unwrap(), 1);
+    }
+
+    #[test]
+    fn proxy_provider_reads_current_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Mutex::new(
+            storage::Store::open(&directory.path().join("proxy.db")).unwrap(),
+        ));
+        let provider = proxy_provider(store.clone());
+        assert_eq!(provider().unwrap(), api::paddle::ProxyConfig::System);
+
+        store
+            .lock()
+            .unwrap()
+            .set_settings(&HashMap::from([
+                ("proxy_mode".into(), "custom".into()),
+                ("proxy_address".into(), "http://127.0.0.1:7890".into()),
+            ]))
+            .unwrap();
+        assert_eq!(
+            provider().unwrap(),
+            api::paddle::ProxyConfig::Custom("http://127.0.0.1:7890".into())
         );
     }
 }

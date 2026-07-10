@@ -37,7 +37,12 @@ beforeEach(async () => {
   getCurrentWebviewMock.mockReset().mockReturnValue({
     onDragDropEvent: onDragDropEventMock,
   });
-  useApp.setState({ view: "home", service: "vl16", tasks: [] });
+  useApp.setState({
+    view: "home",
+    service: "vl16",
+    tasks: [],
+    todayPages: { vl16: 0, pp_ocr_v6: 0, structure_v3: 0 },
+  });
   await initI18n();
 });
 
@@ -110,7 +115,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   expect(invokeMock).not.toHaveBeenCalledWith("list_tasks", { status: null });
   expect(onDragDropEventMock).not.toHaveBeenCalled();
 
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < 4; index += 1) {
     await act(async () => {
       resolveListeners[index](vi.fn());
       await flushPromises();
@@ -120,7 +125,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   }
 
   await act(async () => {
-    resolveListeners[3](vi.fn());
+    resolveListeners[4](vi.fn());
     await flushPromises();
   });
 
@@ -131,7 +136,7 @@ test("waits for all task listeners before mounting the task view", async () => {
 });
 
 test("StrictMode and unmount eventually release every async listener", async () => {
-  const unlisteners = Array.from({ length: 8 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 10 }, () => vi.fn());
   listenMock.mockImplementation(async () => {
     const unlisten = unlisteners[listenMock.mock.calls.length - 1];
     return unlisten;
@@ -144,7 +149,7 @@ test("StrictMode and unmount eventually release every async listener", async () 
   );
   unmount();
 
-  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(8));
+  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(10));
   await waitFor(() => {
     for (const unlisten of unlisteners) {
       expect(unlisten).toHaveBeenCalledOnce();
@@ -154,13 +159,14 @@ test("StrictMode and unmount eventually release every async listener", async () 
 
 test("shows a localized retryable alert when listener registration fails", async () => {
   vi.useFakeTimers();
-  const unlisteners = Array.from({ length: 4 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 5 }, () => vi.fn());
   listenMock
     .mockRejectedValueOnce(new Error("listen unavailable"))
     .mockResolvedValueOnce(unlisteners[0])
     .mockResolvedValueOnce(unlisteners[1])
     .mockResolvedValueOnce(unlisteners[2])
-    .mockResolvedValueOnce(unlisteners[3]);
+    .mockResolvedValueOnce(unlisteners[3])
+    .mockResolvedValueOnce(unlisteners[4]);
 
   const { unmount } = render(<App />);
   await act(flushPromises);
@@ -174,10 +180,31 @@ test("shows a localized retryable alert when listener registration fails", async
     await flushPromises();
   });
 
-  expect(listenMock).toHaveBeenCalledTimes(5);
+  expect(listenMock).toHaveBeenCalledTimes(6);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   unmount();
   for (const unlisten of unlisteners) {
     expect(unlisten).toHaveBeenCalledOnce();
   }
+});
+
+test("initializes and refreshes the selected service usage", async () => {
+  let pages = 12;
+  invokeMock.mockImplementation(async (command) => {
+    if (command === "get_settings") return { language: "zh-CN" };
+    if (command === "get_usage") {
+      return [{ date: "2026-07-10", service: "vl16", pages }];
+    }
+    return [];
+  });
+
+  render(<App />);
+  expect(await screen.findByText("12 / 20,000 页")).toBeInTheDocument();
+
+  pages = 14;
+  const usageHandler = listenMock.mock.calls.find(
+    ([name]) => name === "usage:updated",
+  )?.[1];
+  await act(async () => usageHandler({ payload: { today_pages: 14 } }));
+  expect(await screen.findByText("14 / 20,000 页")).toBeInTheDocument();
 });

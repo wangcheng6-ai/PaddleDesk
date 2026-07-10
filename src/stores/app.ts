@@ -36,6 +36,8 @@ export interface AppState {
   setView: (view: View) => void;
   service: ServiceId;
   setService: (service: ServiceId) => void;
+  todayPages: Record<ServiceId, number>;
+  setTodayPages: (pages: Record<ServiceId, number>) => void;
   tasks: TaskSummary[];
   taskRevision: number;
   taskRevisions: Record<string, number>;
@@ -54,6 +56,8 @@ export const useApp = create<AppState>((set, get) => ({
   setView: (view) => set({ view }),
   service: "vl16",
   setService: (service) => set({ service }),
+  todayPages: { vl16: 0, pp_ocr_v6: 0, structure_v3: 0 },
+  setTodayPages: (todayPages) => set({ todayPages }),
   tasks: [],
   taskRevision: 0,
   taskRevisions: {},

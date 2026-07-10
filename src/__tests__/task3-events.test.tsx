@@ -16,6 +16,7 @@ import { useApp } from "../stores/app";
 beforeEach(async () => {
   invokeMock.mockReset().mockImplementation(async (command) => {
     if (command === "get_settings") return { language: "zh-CN" };
+    if (command === "get_usage") return [];
     if (command === "list_tasks") {
       return [
         {
@@ -35,6 +36,7 @@ beforeEach(async () => {
     service: "vl16",
     tasks: [],
     selectedTaskId: null,
+    todayPages: { vl16: 0, pp_ocr_v6: 0, structure_v3: 0 },
   });
   await initI18n();
 });
@@ -44,7 +46,7 @@ afterEach(cleanup);
 test("the App's single task subscription updates the queue through the shared store", async () => {
   render(<App />);
   await screen.findByText("live.pdf");
-  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(4));
+  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(5));
   const handlers = Object.fromEntries(
     listenMock.mock.calls.map(([name, handler]) => [name, handler]),
   );
@@ -64,5 +66,5 @@ test("the App's single task subscription updates the queue through the shared st
     within(list).getByText("已完成", { selector: ".status-pill" }),
   ).toBeInTheDocument();
   expect(within(list).queryByText("gateway 503")).not.toBeInTheDocument();
-  expect(listenMock).toHaveBeenCalledTimes(4);
+  expect(listenMock).toHaveBeenCalledTimes(5);
 });

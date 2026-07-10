@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { UsageRing } from "../components/UsageRing";
 import { formatDate, formatNumber } from "../lib/format";
 import { getUsage, type UsageRow } from "../lib/ipc";
-import type { ServiceId } from "../stores/app";
+import { useApp, type ServiceId } from "../stores/app";
 
 const services: ReadonlyArray<{ id: ServiceId; key: string }> = [
   { id: "vl16", key: "services.vl16" },
@@ -25,6 +25,7 @@ export function Usage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const locale = i18n.resolvedLanguage ?? i18n.language;
+  const liveTotals = useApp((state) => state.todayPages);
 
   useEffect(() => {
     let active = true;
@@ -52,21 +53,29 @@ export function Usage() {
       pp_ocr_v6: 0,
       structure_v3: 0,
     };
+    const today = localDateKey(new Date());
     rows.forEach((row) => {
-      values[row.service] += row.pages;
+      if (row.date === today) values[row.service] += row.pages;
+    });
+    services.forEach(({ id }) => {
+      values[id] = Math.max(values[id], liveTotals[id]);
     });
     return values;
-  }, [rows]);
+  }, [liveTotals, rows]);
   const days = useMemo(() => {
     const byDate = new Map<string, number>();
     rows.forEach((row) => byDate.set(row.date, (byDate.get(row.date) ?? 0) + row.pages));
+    byDate.set(
+      localDateKey(new Date()),
+      services.reduce((sum, { id }) => sum + totals[id], 0),
+    );
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date();
       date.setDate(date.getDate() - (6 - index));
       const key = localDateKey(date);
       return { date, pages: byDate.get(key) ?? 0 };
     });
-  }, [rows]);
+  }, [rows, totals]);
   const maxDay = Math.max(1, ...days.map(({ pages }) => pages));
 
   return (

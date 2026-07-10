@@ -161,7 +161,7 @@ export function Settings() {
                 {[1, 2, 3, 4].map((value) => <option value={value} key={value}>{value}</option>)}
               </select>
             </label>
-            <p>{t("settings.recognition.hotkey", { hotkey: "Ctrl+Shift+P" })}</p>
+            <p>{t("settings.recognition.hotkey", { hotkey: "Ctrl+Alt+S" })}</p>
           </section>
 
           <section className="settings-card">

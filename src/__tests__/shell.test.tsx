@@ -115,7 +115,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   expect(invokeMock).not.toHaveBeenCalledWith("list_tasks", { status: null });
   expect(onDragDropEventMock).not.toHaveBeenCalled();
 
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < 5; index += 1) {
     await act(async () => {
       resolveListeners[index](vi.fn());
       await flushPromises();
@@ -125,7 +125,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   }
 
   await act(async () => {
-    resolveListeners[4](vi.fn());
+    resolveListeners[5](vi.fn());
     await flushPromises();
   });
 
@@ -136,7 +136,7 @@ test("waits for all task listeners before mounting the task view", async () => {
 });
 
 test("StrictMode and unmount eventually release every async listener", async () => {
-  const unlisteners = Array.from({ length: 10 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 12 }, () => vi.fn());
   listenMock.mockImplementation(async () => {
     const unlisten = unlisteners[listenMock.mock.calls.length - 1];
     return unlisten;
@@ -149,7 +149,7 @@ test("StrictMode and unmount eventually release every async listener", async () 
   );
   unmount();
 
-  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(10));
+  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(12));
   await waitFor(() => {
     for (const unlisten of unlisteners) {
       expect(unlisten).toHaveBeenCalledOnce();
@@ -159,14 +159,15 @@ test("StrictMode and unmount eventually release every async listener", async () 
 
 test("shows a localized retryable alert when listener registration fails", async () => {
   vi.useFakeTimers();
-  const unlisteners = Array.from({ length: 5 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 6 }, () => vi.fn());
   listenMock
     .mockRejectedValueOnce(new Error("listen unavailable"))
     .mockResolvedValueOnce(unlisteners[0])
     .mockResolvedValueOnce(unlisteners[1])
     .mockResolvedValueOnce(unlisteners[2])
     .mockResolvedValueOnce(unlisteners[3])
-    .mockResolvedValueOnce(unlisteners[4]);
+    .mockResolvedValueOnce(unlisteners[4])
+    .mockResolvedValueOnce(unlisteners[5]);
 
   const { unmount } = render(<App />);
   await act(flushPromises);
@@ -180,7 +181,7 @@ test("shows a localized retryable alert when listener registration fails", async
     await flushPromises();
   });
 
-  expect(listenMock).toHaveBeenCalledTimes(6);
+  expect(listenMock).toHaveBeenCalledTimes(7);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   unmount();
   for (const unlisten of unlisteners) {

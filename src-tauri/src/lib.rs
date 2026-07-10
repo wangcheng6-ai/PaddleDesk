@@ -1,17 +1,22 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Duration,
 };
 
 use serde::Serialize;
 use tauri::{Emitter, Manager};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::mpsc;
 
 pub mod api;
+pub mod capture;
 pub mod commands;
 pub mod export;
 pub mod model;
+pub mod native;
 pub mod queue;
 pub mod storage;
 
@@ -19,6 +24,7 @@ pub struct AppState {
     pub(crate) store: Arc<Mutex<storage::Store>>,
     pub(crate) queue: Arc<queue::Queue>,
     pub(crate) proxy: api::paddle::ProxyProvider,
+    pub(crate) capture_tasks: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -56,7 +62,7 @@ fn task_ipc_event(event: &queue::QueueEvent) -> (&'static str, serde_json::Value
             "task:progress",
             serde_json::json!({"id": id, "stage": stage, "page": page, "total": total}),
         ),
-        queue::QueueEvent::Done { id } => ("task:done", serde_json::json!({"id": id})),
+        queue::QueueEvent::Done { id, .. } => ("task:done", serde_json::json!({"id": id})),
         queue::QueueEvent::Failed { id, error } => (
             "task:failed",
             serde_json::json!({
@@ -129,6 +135,61 @@ fn report_bridge_diagnostic(diagnostic: BridgeDiagnostic) {
     eprintln!("PaddleDesk event bridge: {}", diagnostic.message());
 }
 
+fn forward_capture_event(
+    app: &tauri::AppHandle,
+    store: &Arc<Mutex<storage::Store>>,
+    capture_tasks: &Arc<Mutex<HashSet<String>>>,
+    event: &queue::QueueEvent,
+) {
+    let id = match event {
+        queue::QueueEvent::Done { id, .. }
+        | queue::QueueEvent::Failed { id, .. }
+        | queue::QueueEvent::Canceled { id } => id,
+        queue::QueueEvent::Progress { .. } => return,
+    };
+    let captured = capture_tasks
+        .lock()
+        .map(|mut tasks| tasks.remove(id))
+        .unwrap_or(false);
+    if !captured {
+        return;
+    }
+    let language = store
+        .lock()
+        .ok()
+        .and_then(|store| store.get_setting("language").ok().flatten())
+        .unwrap_or_else(|| "system".into());
+    let copy = native::native_copy(native::native_locale(&language));
+    let copied = match event {
+        queue::QueueEvent::Done { result, .. } => app
+            .clipboard()
+            .write_text(result.markdown.clone())
+            .map(|_| true)
+            .unwrap_or_else(|error| {
+                eprintln!("PaddleDesk capture clipboard: {error}");
+                false
+            }),
+        _ => false,
+    };
+    let body = if copied {
+        copy.capture_done
+    } else {
+        copy.capture_failed
+    };
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title(copy.notification_title)
+        .body(body)
+        .show()
+    {
+        eprintln!("PaddleDesk capture notification: {error}");
+    }
+    if copied {
+        let _ = app.emit("capture:done", serde_json::json!({"task_id": id}));
+    }
+}
+
 fn real_services(
     token: api::paddle::TokenProvider,
     proxy: api::paddle::ProxyProvider,
@@ -190,6 +251,7 @@ fn startup_concurrency(store: &storage::Store) -> anyhow::Result<usize> {
 fn spawn_event_bridge(
     app_handle: tauri::AppHandle,
     store: Arc<Mutex<storage::Store>>,
+    capture_tasks: Arc<Mutex<HashSet<String>>>,
     mut events: mpsc::UnboundedReceiver<queue::QueueEvent>,
 ) {
     tauri::async_runtime::spawn(async move {
@@ -200,6 +262,7 @@ fn spawn_event_bridge(
                 |name, payload| app_handle.emit(name, payload).map_err(|_| ()),
                 report_bridge_diagnostic,
             );
+            forward_capture_event(&app_handle, &store, &capture_tasks, &event);
         }
     });
 }
@@ -210,13 +273,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(Mutex::new(storage::Store::open(
         &data_dir.join("paddledesk.db"),
     )?));
-    let (persist_results, concurrency) = {
+    let (persist_results, concurrency, language, autostart) = {
         let store = store
             .lock()
             .map_err(|_| std::io::Error::other("store lock poisoned"))?;
         (
             store.get_setting("privacy_mode")?.as_deref() != Some("1"),
             startup_concurrency(&store)?,
+            store
+                .get_setting("language")?
+                .unwrap_or_else(|| "system".into()),
+            store.get_setting("autostart")?.as_deref() == Some("1"),
         )
     };
     let token: api::paddle::TokenProvider = Arc::new(api::credentials::load_token);
@@ -230,12 +297,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Duration::from_secs(1),
         persist_results,
     );
+    let capture_tasks = Arc::new(Mutex::new(HashSet::new()));
     app.manage(AppState {
         store: store.clone(),
         queue: queue.clone(),
         proxy,
+        capture_tasks: capture_tasks.clone(),
     });
-    spawn_event_bridge(app.handle().clone(), store, event_receiver);
+    capture::desktop::setup_tray(app, &language)?;
+    capture::desktop::set_autostart(app.handle(), autostart)?;
+    app.global_shortcut()
+        .register(capture::desktop::SCREENSHOT_SHORTCUT)?;
+    spawn_event_bridge(app.handle().clone(), store, capture_tasks, event_receiver);
     queue.resume();
     Ok(())
 }
@@ -243,11 +316,37 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            capture::desktop::show_main(app);
+        }))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _, event| {
+                    if event.state == ShortcutState::Pressed {
+                        capture::desktop::trigger_capture(app.clone());
+                    }
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(setup)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::create_tasks,
+            commands::create_task_from_clipboard,
+            commands::start_capture,
             commands::list_tasks,
             commands::cancel_task,
             commands::retry_task,
@@ -268,7 +367,18 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::{model::OcrError, queue::QueueEvent};
+    use crate::{
+        model::{OcrError, RecognitionResult},
+        queue::QueueEvent,
+    };
+
+    fn empty_result() -> RecognitionResult {
+        RecognitionResult {
+            markdown: String::new(),
+            page_count: 0,
+            pages: Vec::new(),
+        }
+    }
 
     #[test]
     fn task_payloads_match_ipc_contract_exactly() {
@@ -284,7 +394,10 @@ mod tests {
                 serde_json::json!({"id": "1", "stage": "uploading", "page": 0, "total": 0}),
             ),
             (
-                QueueEvent::Done { id: "1".into() },
+                QueueEvent::Done {
+                    id: "1".into(),
+                    result: empty_result(),
+                },
                 "task:done",
                 serde_json::json!({"id": "1"}),
             ),
@@ -372,7 +485,10 @@ mod tests {
 
         let mut usage_diagnostics = Vec::new();
         forward_event(
-            &QueueEvent::Done { id: "task".into() },
+            &QueueEvent::Done {
+                id: "task".into(),
+                result: empty_result(),
+            },
             || Ok(3),
             |name, _| (name != "usage:updated").then_some(()).ok_or(()),
             |diagnostic| usage_diagnostics.push(diagnostic),
@@ -385,7 +501,10 @@ mod tests {
         for failure in [BridgeDiagnostic::UsageLock, BridgeDiagnostic::UsageQuery] {
             let mut diagnostics = Vec::new();
             forward_event(
-                &QueueEvent::Done { id: "task".into() },
+                &QueueEvent::Done {
+                    id: "task".into(),
+                    result: empty_result(),
+                },
                 || Err(failure),
                 |_, _| Ok(()),
                 |diagnostic| diagnostics.push(diagnostic),

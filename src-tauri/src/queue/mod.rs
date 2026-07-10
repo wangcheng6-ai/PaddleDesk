@@ -34,6 +34,7 @@ pub enum QueueEvent {
     },
     Done {
         id: String,
+        result: RecognitionResult,
     },
     Failed {
         id: String,
@@ -259,7 +260,7 @@ impl Queue {
             Err(error) => return self.fail(&task.task.id, error),
         }
         match self.parse_with_retry(task).await {
-            Ok(result) => self.finish(task, &result),
+            Ok(result) => self.finish(task, result),
             Err(error) => self.fail(&task.task.id, error),
         }
     }
@@ -365,7 +366,7 @@ impl Queue {
         Ok(updated)
     }
 
-    fn finish(&self, task: &AdmittedTask, result: &RecognitionResult) -> Option<QueueEvent> {
+    fn finish(&self, task: &AdmittedTask, result: RecognitionResult) -> Option<QueueEvent> {
         let file_name = Path::new(&task.task.input_path)
             .file_name()
             .and_then(|name| name.to_str())
@@ -376,7 +377,7 @@ impl Queue {
                 match store.complete_task(
                     &task.task.id,
                     file_name,
-                    result,
+                    &result,
                     &today,
                     task.task.service,
                     task.persist_result,
@@ -384,6 +385,7 @@ impl Queue {
                     Ok(true) => {
                         return Some(QueueEvent::Done {
                             id: task.task.id.clone(),
+                            result,
                         })
                     }
                     Ok(false) => return None,

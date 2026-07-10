@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { startCapture } from "../lib/ipc";
 import { useApp, type ServiceId } from "../stores/app";
 
 const services: ReadonlyArray<{ id: ServiceId; key: string }> = [
@@ -12,6 +14,8 @@ export function TopBar() {
   const { t } = useTranslation();
   const service = useApp((state) => state.service);
   const setService = useApp((state) => state.setService);
+  const setView = useApp((state) => state.setView);
+  const [captureFailed, setCaptureFailed] = useState(false);
 
   return (
     <header className="topbar">
@@ -31,6 +35,23 @@ export function TopBar() {
           </button>
         ))}
       </div>
+      <button
+        className="capture-button"
+        type="button"
+        title={t("actions.captureHint")}
+        onClick={() =>
+          void startCapture().then(
+            () => {
+              setCaptureFailed(false);
+              setView("queue");
+            },
+            () => setCaptureFailed(true),
+          )
+        }
+      >
+        {t("actions.capture")}
+      </button>
+      {captureFailed ? <span role="alert">{t("runtime.captureFailed")}</span> : null}
     </header>
   );
 }

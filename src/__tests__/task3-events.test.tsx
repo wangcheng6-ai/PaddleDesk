@@ -46,7 +46,7 @@ afterEach(cleanup);
 test("the App's single task subscription updates the queue through the shared store", async () => {
   render(<App />);
   await screen.findByText("live.pdf");
-  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(5));
+  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(6));
   const handlers = Object.fromEntries(
     listenMock.mock.calls.map(([name, handler]) => [name, handler]),
   );
@@ -66,5 +66,5 @@ test("the App's single task subscription updates the queue through the shared st
     within(list).getByText("已完成", { selector: ".status-pill" }),
   ).toBeInTheDocument();
   expect(within(list).queryByText("gateway 503")).not.toBeInTheDocument();
-  expect(listenMock).toHaveBeenCalledTimes(5);
+  expect(listenMock).toHaveBeenCalledTimes(6);
 });

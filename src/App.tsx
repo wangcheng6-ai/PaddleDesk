@@ -3,7 +3,13 @@ import { useTranslation } from "react-i18next";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
-import { getUsage, onQueueEvent, onUsageUpdated } from "./lib/ipc";
+import {
+  createTaskFromClipboard,
+  getUsage,
+  onCaptureDone,
+  onQueueEvent,
+  onUsageUpdated,
+} from "./lib/ipc";
 import { useApp, type View } from "./stores/app";
 import { Home } from "./views/Home";
 import { History } from "./views/History";
@@ -24,11 +30,15 @@ const titleKeys: Record<View, string> = {
 function App() {
   const { t } = useTranslation();
   const view = useApp((state) => state.view);
+  const service = useApp((state) => state.service);
+  const setView = useApp((state) => state.setView);
+  const setSelectedTaskId = useApp((state) => state.setSelectedTaskId);
   const upsertTask = useApp((state) => state.upsertTask);
   const setTodayPages = useApp((state) => state.setTodayPages);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [subscriptionFailed, setSubscriptionFailed] = useState(false);
   const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
+  const [desktopActionFailed, setDesktopActionFailed] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -55,6 +65,12 @@ function App() {
     void (async () => {
       unlisteners.push(await onQueueEvent(upsertTask));
       unlisteners.push(await onUsageUpdated(() => void refreshUsage()));
+      unlisteners.push(
+        await onCaptureDone((taskId) => {
+          setSelectedTaskId(taskId);
+          setView("viewer");
+        }),
+      );
       if (disposed) {
         unlisteners.forEach((unlisten) => unlisten());
       } else {
@@ -75,7 +91,33 @@ function App() {
       disposed = true;
       cleanup?.();
     };
-  }, [setTodayPages, subscriptionAttempt, upsertTask]);
+  }, [setSelectedTaskId, setTodayPages, setView, subscriptionAttempt, upsertTask]);
+
+  useEffect(() => {
+    if (view !== "home") return;
+
+    const pasteClipboardImage = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "v") return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void createTaskFromClipboard(service).then(
+        () => {
+          setDesktopActionFailed(false);
+          setView("queue");
+        },
+        () => setDesktopActionFailed(true),
+      );
+    };
+
+    window.addEventListener("keydown", pasteClipboardImage);
+    return () => window.removeEventListener("keydown", pasteClipboardImage);
+  }, [service, setView, view]);
 
   const taskView = view === "home" || view === "queue";
   const content =
@@ -115,6 +157,14 @@ function App() {
               }}
             >
               {t("actions.retry")}
+            </button>
+          </div>
+        )}
+        {desktopActionFailed && (
+          <div className="runtime-alert" role="alert">
+            <span>{t("runtime.clipboardImageUnavailable")}</span>
+            <button type="button" onClick={() => setDesktopActionFailed(false)}>
+              {t("actions.dismiss")}
             </button>
           </div>
         )}

@@ -31,7 +31,10 @@
   "actions": {
     "retry": "Retry",
     "cancel": "Cancel",
-    "chooseFiles": "Choose files"
+    "chooseFiles": "Choose files",
+    "capture": "Capture text",
+    "captureHint": "Capture text (Ctrl+Alt+S)",
+    "dismiss": "Dismiss"
   },
   "common": {
     "loading": "Loading…"
@@ -161,7 +164,9 @@
   },
   "runtime": {
     "queueEventsUnavailable": "Task updates are unavailable.",
-    "connectingQueueEvents": "Connecting to task updates…"
+    "connectingQueueEvents": "Connecting to task updates…",
+    "clipboardImageUnavailable": "No image is available on the clipboard.",
+    "captureFailed": "Screen capture could not be started."
   },
   "viewTitles": {
     "home": "Home",

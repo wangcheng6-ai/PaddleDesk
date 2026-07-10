@@ -238,7 +238,7 @@ async fn retries_then_succeeds() {
         options_json: "{}".into(),
     });
     match terminal(&mut rx).await {
-        QueueEvent::Done { id } => assert_eq!(id, "t1"),
+        QueueEvent::Done { id, .. } => assert_eq!(id, "t1"),
         _ => panic!("task should succeed"),
     }
     assert!(store.lock().unwrap().get_result("t1").unwrap().is_some());
@@ -322,7 +322,7 @@ async fn disabled_result_persistence_keeps_lifecycle_without_history() {
             match events.recv().await.expect("queue event channel closed") {
                 QueueEvent::Progress { stage, .. } if stage == "uploading" => uploading = true,
                 QueueEvent::Progress { stage, .. } if stage == "processing" => processing = true,
-                QueueEvent::Done { id } => {
+                QueueEvent::Done { id, .. } => {
                     assert_eq!(id, "private");
                     return (uploading, processing);
                 }
@@ -357,7 +357,7 @@ async fn privacy_policy_is_snapshotted_when_each_task_is_admitted() {
     queue.semaphore.add_permits(1);
     assert!(matches!(
         terminal(&mut events).await,
-        QueueEvent::Done { id } if id == "private"
+        QueueEvent::Done { id, .. } if id == "private"
     ));
     assert!(store
         .lock()
@@ -374,7 +374,7 @@ async fn privacy_policy_is_snapshotted_when_each_task_is_admitted() {
     });
     assert!(matches!(
         terminal(&mut events).await,
-        QueueEvent::Done { id } if id == "public"
+        QueueEvent::Done { id, .. } if id == "public"
     ));
     assert!(store
         .lock()
@@ -480,7 +480,7 @@ async fn manual_retry_only_restarts_requested_failed_task() {
     queue.retry("retry-me").unwrap();
     assert!(matches!(
         terminal(&mut events).await,
-        QueueEvent::Done { id } if id == "retry-me"
+        QueueEvent::Done { id, .. } if id == "retry-me"
     ));
 
     let store = store.lock().unwrap();
@@ -531,7 +531,7 @@ async fn failed_event_is_published_only_after_immediate_retry_is_safe() {
     queue.retry("retry-now").unwrap();
     assert!(matches!(
         terminal(&mut events).await,
-        QueueEvent::Done { id } if id == "retry-now"
+        QueueEvent::Done { id, .. } if id == "retry-now"
     ));
 }
 
@@ -567,7 +567,7 @@ async fn retry_from_failed_poll_window_always_starts_a_worker() {
         loop {
             if matches!(
                 events.recv().await.expect("queue event channel closed"),
-                QueueEvent::Done { id } if id == "retry-from-poll"
+                QueueEvent::Done { id, .. } if id == "retry-from-poll"
             ) {
                 return;
             }
@@ -720,7 +720,7 @@ async fn submit_and_repeated_resume_start_only_one_worker() {
     q.resume();
     q.resume();
     match terminal(&mut rx).await {
-        QueueEvent::Done { id } => assert_eq!(id, "t1"),
+        QueueEvent::Done { id, .. } => assert_eq!(id, "t1"),
         _ => panic!("task should succeed"),
     }
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -793,7 +793,7 @@ async fn resume_picks_up_unfinished() {
         .unwrap();
     q.resume();
     match terminal(&mut rx).await {
-        QueueEvent::Done { id } => assert_eq!(id, "old"),
+        QueueEvent::Done { id, .. } => assert_eq!(id, "old"),
         _ => panic!("resumed task should succeed"),
     }
 }
@@ -820,7 +820,7 @@ async fn resume_can_start_worker_outside_a_tokio_context() {
         .expect("resume must not require a caller-owned Tokio runtime");
 
     match terminal(&mut rx).await {
-        QueueEvent::Done { id } => assert_eq!(id, "old"),
+        QueueEvent::Done { id, .. } => assert_eq!(id, "old"),
         _ => panic!("resumed task should succeed"),
     }
 }

@@ -31,7 +31,10 @@
   "actions": {
     "retry": "重试",
     "cancel": "取消",
-    "chooseFiles": "选择文件"
+    "chooseFiles": "选择文件",
+    "capture": "截图识别",
+    "captureHint": "截图识别（Ctrl+Alt+S）",
+    "dismiss": "关闭"
   },
   "common": {
     "loading": "正在加载…"
@@ -161,7 +164,9 @@
   },
   "runtime": {
     "queueEventsUnavailable": "无法接收任务更新。",
-    "connectingQueueEvents": "正在连接任务更新…"
+    "connectingQueueEvents": "正在连接任务更新…",
+    "clipboardImageUnavailable": "剪贴板中没有可识别的图片。",
+    "captureFailed": "无法启动截图识别。"
   },
   "viewTitles": {
     "home": "主页",

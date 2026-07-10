@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, MutexGuard},
 };
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
     api::{
@@ -12,7 +12,7 @@ use crate::{
         paddle::{PaddleOcr, BASE_URL},
         ParseOptions,
     },
-    export,
+    capture, export,
     model::{OcrError, ServiceId},
     queue::Queue,
     storage::{HistoryRow, NewTask, Store, TaskRow, UsageRow},
@@ -104,6 +104,53 @@ fn lock_store(state: &AppState) -> Result<MutexGuard<'_, Store>, String> {
         .map_err(|_| "store lock poisoned".to_string())
 }
 
+fn submit_image_task(
+    path: std::path::PathBuf,
+    service: ServiceId,
+    state: &AppState,
+    copy_result: bool,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let options_json =
+        serde_json::to_string(&ParseOptions::default()).map_err(|error| error.to_string())?;
+    if copy_result {
+        state
+            .capture_tasks
+            .lock()
+            .map_err(|_| "capture state lock poisoned".to_string())?
+            .insert(id.clone());
+    }
+    state.queue.submit(NewTask {
+        id: id.clone(),
+        service,
+        input_path: path.to_string_lossy().into_owned(),
+        options_json,
+    });
+    Ok(id)
+}
+
+fn default_service(state: &AppState) -> Result<ServiceId, String> {
+    let value = lock_store(state)?
+        .get_setting("default_service")
+        .map_err(|error| error.to_string())?
+        .unwrap_or_else(|| "vl16".into());
+    match value.as_str() {
+        "vl16" => Ok(ServiceId::Vl16),
+        "pp_ocr_v6" => Ok(ServiceId::PpOcrV6),
+        "structure_v3" => Ok(ServiceId::StructureV3),
+        _ => Err("invalid stored default service".into()),
+    }
+}
+
+pub(crate) async fn start_capture_inner(
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    let service = default_service(state)?;
+    let path = capture::select_region(app).await?;
+    submit_image_task(path, service, state, true)
+}
+
 #[tauri::command]
 pub fn create_tasks(
     paths: Vec<String>,
@@ -191,10 +238,46 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<HashMap<String, String
 #[tauri::command]
 pub fn set_settings(
     map: HashMap<String, String>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let store = lock_store(&state)?;
-    apply_settings(map, &store, &state.queue)
+    validate_setting_keys(&map)?;
+    let previous_autostart = map
+        .get("autostart")
+        .map(|_| capture::desktop::autostart_enabled(&app))
+        .transpose()?;
+    if let Some(value) = map.get("autostart") {
+        capture::desktop::set_autostart(&app, value == "1")?;
+    }
+    let result = {
+        let store = lock_store(&state)?;
+        apply_settings(map.clone(), &store, &state.queue)
+    };
+    if let Err(error) = result {
+        if let Some(previous) = previous_autostart {
+            let _ = capture::desktop::set_autostart(&app, previous);
+        }
+        return Err(error);
+    }
+    if let Some(language) = map.get("language") {
+        capture::desktop::refresh_tray(&app, language)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_task_from_clipboard(
+    service: ServiceId,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let path = capture::read_image(&app).await?;
+    submit_image_task(path, service, &state, false)
+}
+
+#[tauri::command]
+pub async fn start_capture(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    start_capture_inner(&app, &state).await
 }
 
 #[tauri::command]
@@ -257,7 +340,7 @@ mod tests {
     async fn wait_done(events: &mut mpsc::UnboundedReceiver<QueueEvent>) -> String {
         timeout(Duration::from_secs(1), async {
             loop {
-                if let Some(QueueEvent::Done { id }) = events.recv().await {
+                if let Some(QueueEvent::Done { id, .. }) = events.recv().await {
                     return id;
                 }
             }

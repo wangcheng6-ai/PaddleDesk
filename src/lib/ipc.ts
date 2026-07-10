@@ -54,6 +54,10 @@ interface UsageUpdatedPayload {
   today_pages: number;
 }
 
+interface CaptureDonePayload {
+  task_id: string;
+}
+
 interface FailedPayload extends IdPayload {
   kind:
     | "Auth"
@@ -81,6 +85,11 @@ export const createTasks = (paths: string[], service: ServiceId) =>
     service,
     options: { lang: null },
   });
+
+export const createTaskFromClipboard = (service: ServiceId) =>
+  invoke<string>("create_task_from_clipboard", { service });
+
+export const startCapture = () => invoke<string>("start_capture");
 
 export const listTasks = (status: string | null) =>
   invoke<TaskSummary[]>("list_tasks", { status });
@@ -178,5 +187,13 @@ export async function onUsageUpdated(
 ): Promise<UnlistenFn> {
   return listen<UsageUpdatedPayload>("usage:updated", ({ payload }) =>
     callback(payload.today_pages),
+  );
+}
+
+export async function onCaptureDone(
+  callback: (taskId: string) => void,
+): Promise<UnlistenFn> {
+  return listen<CaptureDonePayload>("capture:done", ({ payload }) =>
+    callback(payload.task_id),
   );
 }

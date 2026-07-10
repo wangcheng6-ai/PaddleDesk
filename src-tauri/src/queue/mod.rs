@@ -49,7 +49,7 @@ pub struct Queue {
     retry_base: Duration,
     active: Mutex<HashSet<String>>,
     #[cfg(test)]
-    event_probe: Mutex<Option<TestProbe>>,
+    event_probe: Arc<Mutex<Option<TestProbe>>>,
     #[cfg(test)]
     claim_probe: Mutex<Option<TestProbe>>,
 }
@@ -70,7 +70,7 @@ impl Queue {
             retry_base,
             active: Mutex::new(HashSet::new()),
             #[cfg(test)]
-            event_probe: Mutex::new(None),
+            event_probe: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             claim_probe: Mutex::new(None),
         })
@@ -101,10 +101,10 @@ impl Queue {
             .active
             .lock()
             .map_err(|_| storage_error("queue state lock poisoned"))?;
-        let store = self.lock_store()?;
-        let tasks = store.unfinished_tasks().map_err(storage_error)?;
         #[cfg(test)]
         hit_probe(&self.claim_probe);
+        let store = self.lock_store()?;
+        let tasks = store.unfinished_tasks().map_err(storage_error)?;
         Ok(tasks
             .into_iter()
             .filter_map(|task| {
@@ -219,6 +219,8 @@ impl Queue {
     ) -> ProgressFn {
         let store = Arc::clone(&self.store);
         let events = self.events.clone();
+        #[cfg(test)]
+        let event_probe = Arc::clone(&self.event_probe);
         Box::new(move |page, total| {
             let Ok(store) = store.lock() else {
                 set_progress_error(&progress_error, storage_error("store lock poisoned"));
@@ -226,6 +228,8 @@ impl Queue {
             };
             match store.update_status_if_active(&id, "processing", Some((page, total)), None) {
                 Ok(true) => {
+                    #[cfg(test)]
+                    hit_probe(&event_probe);
                     let _ = events.send(QueueEvent::Progress {
                         id: id.clone(),
                         stage: "processing".into(),
@@ -435,10 +439,12 @@ mod tests {
         max_active: Arc<AtomicU32>,
     }
 
-    struct StalledOcr;
+    struct CallbackStalledOcr {
+        release_callback: Arc<tokio::sync::Notify>,
+    }
 
     #[async_trait::async_trait]
-    impl OcrService for StalledOcr {
+    impl OcrService for CallbackStalledOcr {
         fn id(&self) -> ServiceId {
             ServiceId::Vl16
         }
@@ -447,8 +453,10 @@ mod tests {
             &self,
             _input: &InputDoc,
             _options: &ParseOptions,
-            _progress: ProgressFn,
+            progress: ProgressFn,
         ) -> Result<RecognitionResult, OcrError> {
+            self.release_callback.notified().await;
+            progress(1, 1);
             std::future::pending().await
         }
     }
@@ -625,16 +633,26 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn canceled_is_last_event_after_accepted_progress() {
-        let (q, _store, mut rx) = setup_service(Arc::new(StalledOcr), 1).await;
-        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
-        let release = Arc::new(Barrier::new(2));
-        *q.event_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+        let release_callback = Arc::new(tokio::sync::Notify::new());
+        let (q, _store, mut rx) = setup_service(
+            Arc::new(CallbackStalledOcr {
+                release_callback: release_callback.clone(),
+            }),
+            1,
+        )
+        .await;
         q.submit(NewTask {
             id: "t1".into(),
             service: ServiceId::Vl16,
             input_path: "a.png".into(),
             options_json: "{}".into(),
         });
+        wait_for_stage(&mut rx, "uploading").await;
+
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+        let release = Arc::new(Barrier::new(2));
+        *q.event_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+        release_callback.notify_one();
         entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
         let store_locked = matches!(q.store.try_lock(), Err(TryLockError::WouldBlock));
 
@@ -721,23 +739,49 @@ mod tests {
             .unwrap();
         q.active.lock().unwrap().insert("old".into());
 
+        let snapshot_guard = store.lock().unwrap();
         let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
         let release = Arc::new(Barrier::new(2));
         *q.claim_probe.lock().unwrap() = Some((entered_tx, release.clone()));
         let claim_queue = q.clone();
         let claim = std::thread::spawn(move || claim_queue.resume());
-        entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+        if let Err(error) = entered_rx.recv_timeout(TEST_TIMEOUT) {
+            drop(snapshot_guard);
+            entered_rx
+                .recv_timeout(TEST_TIMEOUT)
+                .expect("claim probe did not fire after Store release");
+            release.wait();
+            claim.join().unwrap();
+            panic!("claim probe did not fire before unfinished snapshot: {error}");
+        }
         let active_locked = matches!(q.active.try_lock(), Err(TryLockError::WouldBlock));
+        if !active_locked {
+            drop(snapshot_guard);
+            release.wait();
+            claim.join().unwrap();
+            panic!("active lock was not held before unfinished snapshot");
+        }
 
+        let (cleanup_started_tx, cleanup_started_rx) = std::sync::mpsc::sync_channel(0);
         let cleanup_queue = q.clone();
         let cleanup = std::thread::spawn(move || {
+            let active_locked = matches!(
+                cleanup_queue.active.try_lock(),
+                Err(TryLockError::WouldBlock)
+            );
+            cleanup_started_tx.send(active_locked).unwrap();
             cleanup_queue.active.lock().unwrap().remove("old");
         });
+        let cleanup_waited_for_active = cleanup_started_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+        drop(snapshot_guard);
         release.wait();
 
         claim.join().unwrap();
         cleanup.join().unwrap();
-        assert!(active_locked, "active lock was released during claim");
+        assert!(
+            cleanup_waited_for_active,
+            "active lock was released before registration"
+        );
         assert_eq!(service_probe.call_count(), 0);
         assert!(rx.try_recv().is_err(), "resume started a duplicate worker");
     }

@@ -23,6 +23,12 @@
     "summary": "{{used}} / {{quota}} pages",
     "meterLabel": "{{used}} of {{quota}} pages used today"
   },
+  "actions": {
+    "retry": "Retry"
+  },
+  "runtime": {
+    "queueEventsUnavailable": "Task updates are unavailable."
+  },
   "viewTitles": {
     "home": "Home",
     "viewer": "Result Viewer",

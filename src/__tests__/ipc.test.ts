@@ -9,10 +9,12 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { getSettings, onQueueEvent } from "../lib/ipc";
+import { useApp } from "../stores/app";
 
 beforeEach(() => {
   invokeMock.mockReset();
   listenMock.mockReset();
+  useApp.setState({ view: "home", service: "vl16", tasks: [] });
 });
 
 test("getSettings preserves the Record returned by Tauri", async () => {
@@ -56,21 +58,59 @@ test("subscribes to exactly four task events and maps event.payload", async () =
       status: "processing",
       progress_page: 2,
       total_pages: 4,
+      error_kind: null,
+      error_msg: null,
     },
-    { id: "1", status: "done" },
+    { id: "1", status: "done", error_kind: null, error_msg: null },
     {
       id: "2",
       status: "failed",
       error_kind: "Network",
       error_msg: "timeout",
     },
-    { id: "3", status: "canceled" },
+    { id: "3", status: "canceled", error_kind: null, error_msg: null },
   ]);
 
   cleanup();
   for (const unlisten of unlisteners) {
     expect(unlisten).toHaveBeenCalledOnce();
   }
+});
+
+test("real event sequences clear stale failure details through upsertTask", async () => {
+  listenMock.mockImplementation(async () => vi.fn());
+  const cleanup = await onQueueEvent(useApp.getState().upsertTask);
+  const handlers = Object.fromEntries(
+    listenMock.mock.calls.map(([name, handler]) => [name, handler]),
+  );
+
+  handlers["task:failed"]({
+    payload: { id: "retry", kind: "Network", message: "timeout" },
+  });
+  handlers["task:progress"]({
+    payload: { id: "retry", stage: "processing", page: 1, total: 2 },
+  });
+  handlers["task:done"]({ payload: { id: "retry" } });
+  handlers["task:failed"]({
+    payload: { id: "cancel", kind: "Server", message: "upstream" },
+  });
+  handlers["task:canceled"]({ payload: { id: "cancel" } });
+
+  expect(useApp.getState().tasks).toEqual([
+    expect.objectContaining({
+      id: "retry",
+      status: "done",
+      error_kind: null,
+      error_msg: null,
+    }),
+    {
+      id: "cancel",
+      status: "canceled",
+      error_kind: null,
+      error_msg: null,
+    },
+  ]);
+  cleanup();
 });
 
 test("cleans completed subscriptions before rejecting a later listen failure", async () => {

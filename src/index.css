@@ -39,8 +39,6 @@ body,
 }
 
 body {
-  min-width: 800px;
-  min-height: 600px;
   overflow: hidden;
 }
 
@@ -209,6 +207,27 @@ button:focus-visible {
   background: var(--color-surface);
   box-shadow: var(--shadow-small);
   font-weight: 700;
+}
+
+.runtime-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f3b6b6;
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: 13px;
+}
+
+.runtime-alert button {
+  padding: 5px 10px;
+  border: 1px solid currentcolor;
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .view-content {

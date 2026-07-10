@@ -19,10 +19,20 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
-test("resolves system and invalid settings from navigator language", () => {
+test("resolves only missing and system settings from navigator language", () => {
   expect(resolveLanguage("system", "zh-Hans-CN")).toBe("zh-CN");
   expect(resolveLanguage(undefined, "en-US")).toBe("en");
-  expect(resolveLanguage("fr", "zh-TW")).toBe("zh-CN");
+});
+
+test("returns explicit supported languages unchanged", () => {
+  expect(resolveLanguage("zh-CN", "en-US")).toBe("zh-CN");
+  expect(resolveLanguage("en", "zh-CN")).toBe("en");
+});
+
+test.each(["", "fr", null, 42])("rejects invalid language setting %j", (setting) => {
+  expect(() => resolveLanguage(setting, "zh-CN")).toThrow(
+    "Invalid language setting",
+  );
 });
 
 test("initializes from the settings record before rendering", async () => {
@@ -39,6 +49,12 @@ test("rejects when get_settings fails", async () => {
   invokeMock.mockRejectedValue(failure);
 
   await expect(initI18n()).rejects.toBe(failure);
+});
+
+test("rejects an invalid language returned by get_settings", async () => {
+  invokeMock.mockResolvedValue({ language: "fr" });
+
+  await expect(initI18n()).rejects.toThrow("Invalid language setting");
 });
 
 test("Chinese and English resources have identical key sets", () => {

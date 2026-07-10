@@ -23,6 +23,12 @@
     "summary": "{{used}} / {{quota}} 页",
     "meterLabel": "今日已用 {{used}} 页，共 {{quota}} 页"
   },
+  "actions": {
+    "retry": "重试"
+  },
+  "runtime": {
+    "queueEventsUnavailable": "无法接收任务更新。"
+  },
   "viewTitles": {
     "home": "主页",
     "viewer": "结果查看器",

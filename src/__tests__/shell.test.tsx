@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -29,6 +30,15 @@ beforeEach(async () => {
 });
 
 afterEach(cleanup);
+
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+const flushPromises = async () => {
+  for (let index = 0; index < 10; index += 1) await Promise.resolve();
+};
 
 test("renders six semantic nav buttons and switches the current view", () => {
   render(<App />);
@@ -81,4 +91,33 @@ test("StrictMode and unmount eventually release every async listener", async () 
       expect(unlisten).toHaveBeenCalledOnce();
     }
   });
+});
+
+test("shows a localized retryable alert when listener registration fails", async () => {
+  vi.useFakeTimers();
+  const unlisteners = Array.from({ length: 4 }, () => vi.fn());
+  listenMock
+    .mockRejectedValueOnce(new Error("listen unavailable"))
+    .mockResolvedValueOnce(unlisteners[0])
+    .mockResolvedValueOnce(unlisteners[1])
+    .mockResolvedValueOnce(unlisteners[2])
+    .mockResolvedValueOnce(unlisteners[3]);
+
+  const { unmount } = render(<App />);
+  await act(flushPromises);
+
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("无法接收任务更新。");
+
+  await act(async () => {
+    fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    await flushPromises();
+  });
+
+  expect(listenMock).toHaveBeenCalledTimes(5);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  unmount();
+  for (const unlisten of unlisteners) {
+    expect(unlisten).toHaveBeenCalledOnce();
+  }
 });

@@ -12,6 +12,9 @@ export function resolveLanguage(
   systemLanguage = globalThis.navigator?.language ?? "en",
 ): Language {
   if (setting === "zh-CN" || setting === "en") return setting;
+  if (setting !== undefined && setting !== "system") {
+    throw new Error("Invalid language setting");
+  }
   return systemLanguage.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
 }
 

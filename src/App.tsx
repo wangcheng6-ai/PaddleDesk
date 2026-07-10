@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Sidebar } from "./components/Sidebar";
@@ -19,6 +19,8 @@ function App() {
   const { t } = useTranslation();
   const view = useApp((state) => state.view);
   const upsertTask = useApp((state) => state.upsertTask);
+  const [subscriptionFailed, setSubscriptionFailed] = useState(false);
+  const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
 
   useEffect(() => {
     let disposed = false;
@@ -27,10 +29,13 @@ function App() {
     void onQueueEvent(upsertTask).then(
       (unlisten) => {
         if (disposed) unlisten();
-        else cleanup = unlisten;
+        else {
+          cleanup = unlisten;
+          setSubscriptionFailed(false);
+        }
       },
-      (error) => {
-        if (!disposed) setTimeout(() => { throw error; });
+      () => {
+        if (!disposed) setSubscriptionFailed(true);
       },
     );
 
@@ -38,13 +43,24 @@ function App() {
       disposed = true;
       cleanup?.();
     };
-  }, [upsertTask]);
+  }, [subscriptionAttempt, upsertTask]);
 
   return (
     <div className="app-shell">
       <Sidebar />
       <section className="workspace">
         <TopBar />
+        {subscriptionFailed && (
+          <div className="runtime-alert" role="alert">
+            <span>{t("runtime.queueEventsUnavailable")}</span>
+            <button
+              type="button"
+              onClick={() => setSubscriptionAttempt((attempt) => attempt + 1)}
+            >
+              {t("actions.retry")}
+            </button>
+          </div>
+        )}
         <main className="view-content">
           <h1>{t(titleKeys[view])}</h1>
         </main>

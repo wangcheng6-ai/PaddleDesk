@@ -35,12 +35,19 @@ export async function onQueueEvent(
           status: payload.stage,
           progress_page: payload.page,
           total_pages: payload.total,
+          error_kind: null,
+          error_msg: null,
         }),
       ),
     );
     unlisteners.push(
       await listen<IdPayload>("task:done", ({ payload }) =>
-        callback({ id: payload.id, status: "done" }),
+        callback({
+          id: payload.id,
+          status: "done",
+          error_kind: null,
+          error_msg: null,
+        }),
       ),
     );
     unlisteners.push(
@@ -55,7 +62,12 @@ export async function onQueueEvent(
     );
     unlisteners.push(
       await listen<IdPayload>("task:canceled", ({ payload }) =>
-        callback({ id: payload.id, status: "canceled" }),
+        callback({
+          id: payload.id,
+          status: "canceled",
+          error_kind: null,
+          error_msg: null,
+        }),
       ),
     );
   } catch (error) {

@@ -19,7 +19,9 @@ export function UpdatePrompt() {
         if (active) setUpdate(available);
         else void available.close();
       },
-      (error) => console.warn("update check failed", error),
+      () => {
+        // startup check is best-effort; Settings offers a manual retry
+      },
     );
     return () => {
       active = false;
@@ -33,8 +35,7 @@ export function UpdatePrompt() {
     try {
       await update.downloadAndInstall();
       await relaunch();
-    } catch (error) {
-      console.warn("update install failed", error);
+    } catch {
       setStatus("failed");
     }
   };

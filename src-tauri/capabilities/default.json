@@ -7,7 +7,7 @@
   ],
   "permissions": [
     "core:default",
-    "opener:default",
+    "opener:allow-default-urls",
     "dialog:allow-open",
     "dialog:allow-save",
     "updater:default",

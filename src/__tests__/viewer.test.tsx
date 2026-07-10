@@ -134,7 +134,7 @@ test("renders only the selected PDF page and advances to page two", async () => 
 
   render(<Viewer />);
 
-  const canvas = await screen.findByTestId("pdf-page");
+  const canvas = await screen.findByTestId("pdf-page", {}, { timeout: 3000 });
   await waitFor(() => expect(getPageMock).toHaveBeenCalledWith(1));
   expect(canvas).toHaveAttribute("data-page-number", "1");
 

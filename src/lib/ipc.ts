@@ -84,7 +84,8 @@ interface FailedPayload extends IdPayload {
     | "InvalidInput"
     | "Network"
     | "Server"
-    | "Parse";
+    | "Parse"
+    | "Internal";
   message: string;
 }
 

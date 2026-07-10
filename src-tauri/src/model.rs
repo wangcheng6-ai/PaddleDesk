@@ -57,6 +57,8 @@ pub enum OcrError {
     Network(String),
     #[error("server error: {0}")]
     Server(String),
+    #[error("internal error: {0}")]
+    Internal(String),
     #[error("response parse failed: {0}")]
     Parse(String),
 }

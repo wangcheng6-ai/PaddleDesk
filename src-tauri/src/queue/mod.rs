@@ -224,7 +224,7 @@ impl Queue {
                 .lock()
                 .map_err(|_| storage_error("queue state lock poisoned"))?;
             if !register(&mut active, id) {
-                return Err(OcrError::Parse("task is already active".into()));
+                return Err(OcrError::Internal("task is already active".into()));
             }
             let retried = self
                 .lock_store()
@@ -233,7 +233,7 @@ impl Queue {
                 Ok(Some(task)) => task,
                 Ok(None) => {
                     active.remove(id);
-                    return Err(OcrError::Parse(
+                    return Err(OcrError::Internal(
                         "task is not failed or does not exist".into(),
                     ));
                 }
@@ -315,7 +315,7 @@ impl Queue {
             permit = self.semaphore.acquire() => permit,
         };
         let Ok(_permit) = permit else {
-            return self.fail(&task.task.id, OcrError::Parse("queue stopped".into()));
+            return self.fail(&task.task.id, OcrError::Internal("queue stopped".into()));
         };
         match self.progress(&task.task.id, "uploading", 0, 0) {
             Ok(true) => {}
@@ -341,9 +341,9 @@ impl Queue {
             .services
             .get(&task.service)
             .cloned()
-            .ok_or_else(|| OcrError::Parse("OCR service is not configured".into()))?;
+            .ok_or_else(|| OcrError::Internal("OCR service is not configured".into()))?;
         let options: ParseOptions = serde_json::from_str(&task.options_json)
-            .map_err(|error| OcrError::Parse(error.to_string()))?;
+            .map_err(|error| OcrError::Internal(error.to_string()))?;
         let input = InputDoc {
             path: task.input_path.clone().into(),
         };
@@ -360,7 +360,7 @@ impl Queue {
                     .map_err(storage_error)?
                 {
                     true => Ok(()),
-                    false => Err(OcrError::Parse("task is no longer active".into())),
+                    false => Err(OcrError::Internal("task is no longer active".into())),
                 }
             }),
         );
@@ -531,7 +531,7 @@ impl Queue {
             .map_err(|_| storage_error("queue state lock poisoned"))?
             .get(id)
             .map(watch::Sender::subscribe)
-            .ok_or_else(|| OcrError::Parse("task is not active".into()))
+            .ok_or_else(|| OcrError::Internal("task is not active".into()))
     }
 
     fn emit_failed(&self, id: &str, error: OcrError) {
@@ -578,7 +578,7 @@ fn is_retryable(error: &OcrError) -> bool {
 }
 
 fn storage_error(error: impl std::fmt::Display) -> OcrError {
-    OcrError::Parse(format!("storage error: {error}"))
+    OcrError::Internal(format!("storage error: {error}"))
 }
 
 fn set_progress_error(slot: &Mutex<Option<OcrError>>, error: OcrError) {

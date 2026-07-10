@@ -760,6 +760,7 @@ fn error_fields(error: &OcrError) -> (&'static str, Option<String>) {
         OcrError::InvalidInput(detail) => ("invalid_input", Some(detail.clone())),
         OcrError::Network(detail) => ("network", Some(detail.clone())),
         OcrError::Server(detail) => ("server", Some(detail.clone())),
+        OcrError::Internal(detail) => ("internal", Some(detail.clone())),
         OcrError::Parse(detail) => ("parse", Some(detail.clone())),
     }
 }
@@ -1270,7 +1271,7 @@ mod tests {
         })
         .await
         .expect("timed out waiting for storage failure");
-        assert!(matches!(error, OcrError::Parse(message) if message.contains("forced usage")));
+        assert!(matches!(error, OcrError::Internal(message) if message.contains("forced usage")));
         let store = store.lock().unwrap();
         assert_eq!(store.list_tasks(Some("failed")).unwrap().len(), 1);
         assert!(store.get_result("broken").unwrap().is_none());

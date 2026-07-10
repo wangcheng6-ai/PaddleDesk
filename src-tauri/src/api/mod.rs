@@ -48,7 +48,7 @@ impl ParseCheckpoint {
         self.job_ids
             .lock()
             .map(|ids| ids.clone())
-            .map_err(|_| OcrError::Parse("job checkpoint lock poisoned".into()))
+            .map_err(|_| OcrError::Internal("job checkpoint lock poisoned".into()))
     }
 
     pub fn save(&self, job_ids: Vec<String>) -> Result<(), OcrError> {
@@ -56,7 +56,7 @@ impl ParseCheckpoint {
         *self
             .job_ids
             .lock()
-            .map_err(|_| OcrError::Parse("job checkpoint lock poisoned".into()))? = job_ids;
+            .map_err(|_| OcrError::Internal("job checkpoint lock poisoned".into()))? = job_ids;
         Ok(())
     }
 }

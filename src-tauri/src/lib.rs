@@ -87,6 +87,7 @@ fn ipc_error_kind(error: &model::OcrError) -> &'static str {
         model::OcrError::InvalidInput(_) => "InvalidInput",
         model::OcrError::Network(_) => "Network",
         model::OcrError::Server(_) => "Server",
+        model::OcrError::Internal(_) => "Internal",
         model::OcrError::Parse(_) => "Parse",
     }
 }
@@ -98,6 +99,7 @@ fn ipc_error_message(error: &model::OcrError) -> &str {
         | model::OcrError::InvalidInput(message)
         | model::OcrError::Network(message)
         | model::OcrError::Server(message)
+        | model::OcrError::Internal(message)
         | model::OcrError::Parse(message) => message,
     }
 }
@@ -324,17 +326,17 @@ fn proxy_provider(store: Arc<Mutex<storage::Store>>) -> api::paddle::ProxyProvid
     Arc::new(move || {
         let store = store
             .lock()
-            .map_err(|_| model::OcrError::Parse("store lock poisoned".into()))?;
+            .map_err(|_| model::OcrError::Internal("store lock poisoned".into()))?;
         let mode = store
             .get_setting("proxy_mode")
-            .map_err(|error| model::OcrError::Parse(error.to_string()))?
+            .map_err(|error| model::OcrError::Internal(error.to_string()))?
             .unwrap_or_else(|| "system".into());
         match mode.as_str() {
             "system" => Ok(api::paddle::ProxyConfig::System),
             "direct" => Ok(api::paddle::ProxyConfig::Direct),
             "custom" => store
                 .get_setting("proxy_address")
-                .map_err(|error| model::OcrError::Parse(error.to_string()))?
+                .map_err(|error| model::OcrError::Internal(error.to_string()))?
                 .filter(|address| !address.trim().is_empty())
                 .map(api::paddle::ProxyConfig::Custom)
                 .ok_or_else(|| {
@@ -681,6 +683,11 @@ mod tests {
             (OcrError::Network("offline".into()), "Network", "offline"),
             (OcrError::Server("503".into()), "Server", "503"),
             (OcrError::Parse("bad json".into()), "Parse", "bad json"),
+            (
+                OcrError::Internal("lock poisoned".into()),
+                "Internal",
+                "lock poisoned",
+            ),
         ];
 
         for (error, kind, message) in errors {

@@ -16,6 +16,7 @@ const errorKinds: Record<string, string> = {
   network: "network",
   server: "server",
   parse: "parse",
+  internal: "internal",
 };
 
 interface TaskRowItemProps {

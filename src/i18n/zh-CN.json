@@ -178,6 +178,10 @@
       "message": "无法解析识别结果。",
       "suggestion": "请检查更新；若问题持续，请报告问题。"
     },
+    "internal": {
+      "message": "应用内部错误。",
+      "suggestion": "请重试；若问题持续，请在 GitHub 提交 Issue。"
+    },
     "unknown": {
       "message": "识别任务失败。",
       "suggestion": "发生了未知错误，请查看技术详情后重试。"

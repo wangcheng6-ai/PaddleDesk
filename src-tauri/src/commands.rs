@@ -970,7 +970,7 @@ mod tests {
         let failed_id = match events.recv().await {
             Some(QueueEvent::Failed {
                 id,
-                error: OcrError::Parse(message),
+                error: OcrError::Internal(message),
             }) if message.contains("forced task insert failure") => id,
             event => panic!("unexpected event: {event:?}"),
         };

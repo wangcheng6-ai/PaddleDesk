@@ -178,6 +178,10 @@
       "message": "The recognition result could not be parsed.",
       "suggestion": "Check for updates and report the issue if it continues."
     },
+    "internal": {
+      "message": "An internal application error occurred.",
+      "suggestion": "Retry; if it persists, please open a GitHub issue."
+    },
     "unknown": {
       "message": "The recognition task failed.",
       "suggestion": "An unknown error occurred. Review the technical details and try again."

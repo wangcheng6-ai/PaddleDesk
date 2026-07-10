@@ -51,7 +51,14 @@ interface IdPayload {
 }
 
 interface FailedPayload extends IdPayload {
-  kind: "Auth" | "Quota" | "Network" | "Server" | "Parse";
+  kind:
+    | "Auth"
+    | "Quota"
+    | "RateLimited"
+    | "InvalidInput"
+    | "Network"
+    | "Server"
+    | "Parse";
   message: string;
 }
 

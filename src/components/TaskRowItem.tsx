@@ -8,7 +8,15 @@ const serviceKeys = {
   structure_v3: "services.structureV3",
 } as const;
 
-const errorKinds = new Set(["auth", "quota", "network", "server", "parse"]);
+const errorKinds: Record<string, string> = {
+  auth: "auth",
+  quota: "quota",
+  ratelimited: "rate_limited",
+  invalidinput: "invalid_input",
+  network: "network",
+  server: "server",
+  parse: "parse",
+};
 
 interface TaskRowItemProps {
   task: TaskSummary;
@@ -27,8 +35,10 @@ export function TaskRowItem({
 }: TaskRowItemProps) {
   const { t } = useTranslation();
   const status = task.status ?? "pending";
-  const errorKind = (task.error_kind ?? "unknown").toLowerCase();
-  const errorKey = errorKinds.has(errorKind) ? errorKind : "unknown";
+  const errorKind = (task.error_kind ?? "unknown")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  const errorKey = errorKinds[errorKind] ?? "unknown";
   const progress =
     status === "processing" && task.total_pages
       ? t("task.progress", {

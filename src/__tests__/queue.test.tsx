@@ -98,10 +98,12 @@ test("localizes failed tasks, isolates raw detail, and wires retry and cancel", 
   expect(zeroRow).not.toHaveTextContent("NaN");
 });
 
-test("maps all five error kinds case-insensitively", async () => {
+test("maps all semantic error kinds case-insensitively", async () => {
   const errors: TaskSummary[] = [
     ["auth", "Auth", null],
     ["quota", "quota", null],
+    ["rate", "rAtElImItEd", "retry after 5s"],
+    ["input", "InvalidInput", "unsupported file"],
     ["network", "nEtWoRk", "socket timeout"],
     ["server", "Server", "gateway 503"],
     ["parse", "PARSE", "missing field"],
@@ -125,13 +127,15 @@ test("maps all five error kinds case-insensitively", async () => {
   for (const message of [
     "Token 无效或已过期。",
     "今日额度已用尽。",
+    "服务当前请求较多。",
+    "文件或识别参数不符合服务要求。",
     "网络连接失败。",
     "服务暂时不可用。",
     "无法解析识别结果。",
   ]) {
     expect(within(list).getByText(message)).toBeInTheDocument();
   }
-  expect(within(list).getAllByText("技术详情")).toHaveLength(3);
+  expect(within(list).getAllByText("技术详情")).toHaveLength(5);
 });
 
 test("uses the unknown copy instead of pretending a future error is Parse", async () => {

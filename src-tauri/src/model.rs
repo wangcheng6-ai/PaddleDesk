@@ -45,15 +45,19 @@ pub struct RecognitionResult {
 #[derive(Debug, Clone, thiserror::Error, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "detail", rename_all = "snake_case")]
 pub enum OcrError {
-    #[error("token 无效或过期")]
+    #[error("authentication failed")]
     Auth,
-    #[error("今日额度已用尽")]
+    #[error("daily quota exhausted")]
     Quota,
-    #[error("网络错误: {0}")]
+    #[error("rate limited: {0}")]
+    RateLimited(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("network error: {0}")]
     Network(String),
-    #[error("服务端错误: {0}")]
+    #[error("server error: {0}")]
     Server(String),
-    #[error("响应解析失败: {0}")]
+    #[error("response parse failed: {0}")]
     Parse(String),
 }
 

@@ -439,7 +439,10 @@ fn hit_probe(probe: &Mutex<Option<TestProbe>>) {
 }
 
 fn is_retryable(error: &OcrError) -> bool {
-    !matches!(error, OcrError::Auth | OcrError::Quota)
+    matches!(
+        error,
+        OcrError::RateLimited(_) | OcrError::Network(_) | OcrError::Server(_)
+    )
 }
 
 fn storage_error(error: impl std::fmt::Display) -> OcrError {

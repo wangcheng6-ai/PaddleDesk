@@ -134,6 +134,14 @@
       "message": "今日额度已用尽。",
       "suggestion": "可改用其他模型，或等待明日额度重置。"
     },
+    "rate_limited": {
+      "message": "服务当前请求较多。",
+      "suggestion": "PaddleDesk 会自动退避重试，也可稍后手动重试。"
+    },
+    "invalid_input": {
+      "message": "文件或识别参数不符合服务要求。",
+      "suggestion": "请检查文件格式、大小、页数后重新提交。"
+    },
     "network": {
       "message": "网络连接失败。",
       "suggestion": "检查网络或代理设置后重试。"

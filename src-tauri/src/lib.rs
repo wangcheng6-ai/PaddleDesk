@@ -72,6 +72,8 @@ fn ipc_error_kind(error: &model::OcrError) -> &'static str {
     match error {
         model::OcrError::Auth => "Auth",
         model::OcrError::Quota => "Quota",
+        model::OcrError::RateLimited(_) => "RateLimited",
+        model::OcrError::InvalidInput(_) => "InvalidInput",
         model::OcrError::Network(_) => "Network",
         model::OcrError::Server(_) => "Server",
         model::OcrError::Parse(_) => "Parse",
@@ -81,7 +83,9 @@ fn ipc_error_kind(error: &model::OcrError) -> &'static str {
 fn ipc_error_message(error: &model::OcrError) -> &str {
     match error {
         model::OcrError::Auth | model::OcrError::Quota => "",
-        model::OcrError::Network(message)
+        model::OcrError::RateLimited(message)
+        | model::OcrError::InvalidInput(message)
+        | model::OcrError::Network(message)
         | model::OcrError::Server(message)
         | model::OcrError::Parse(message) => message,
     }
@@ -264,6 +268,16 @@ mod tests {
         let errors = [
             (OcrError::Auth, "Auth", ""),
             (OcrError::Quota, "Quota", ""),
+            (
+                OcrError::RateLimited("slow down".into()),
+                "RateLimited",
+                "slow down",
+            ),
+            (
+                OcrError::InvalidInput("bad file".into()),
+                "InvalidInput",
+                "bad file",
+            ),
             (OcrError::Network("offline".into()), "Network", "offline"),
             (OcrError::Server("503".into()), "Server", "503"),
             (OcrError::Parse("bad json".into()), "Parse", "bad json"),

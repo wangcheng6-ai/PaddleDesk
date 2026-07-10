@@ -462,6 +462,8 @@ fn error_fields(error: &OcrError) -> (&'static str, Option<String>) {
     match error {
         OcrError::Auth => ("auth", None),
         OcrError::Quota => ("quota", None),
+        OcrError::RateLimited(detail) => ("rate_limited", Some(detail.clone())),
+        OcrError::InvalidInput(detail) => ("invalid_input", Some(detail.clone())),
         OcrError::Network(detail) => ("network", Some(detail.clone())),
         OcrError::Server(detail) => ("server", Some(detail.clone())),
         OcrError::Parse(detail) => ("parse", Some(detail.clone())),
@@ -547,6 +549,18 @@ mod tests {
         let cases = [
             ("auth", OcrError::Auth, "auth", None),
             ("quota", OcrError::Quota, "quota", None),
+            (
+                "rate",
+                OcrError::RateLimited("retry after 5s".into()),
+                "rate_limited",
+                Some("retry after 5s"),
+            ),
+            (
+                "input",
+                OcrError::InvalidInput("unsupported file".into()),
+                "invalid_input",
+                Some("unsupported file"),
+            ),
             (
                 "network",
                 OcrError::Network("socket timeout".into()),

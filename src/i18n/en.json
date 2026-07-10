@@ -134,6 +134,14 @@
       "message": "Today's quota has been used up.",
       "suggestion": "Switch to another model or wait for tomorrow's reset."
     },
+    "rate_limited": {
+      "message": "The service is receiving too many requests.",
+      "suggestion": "PaddleDesk will retry with backoff, or you can try again later."
+    },
+    "invalid_input": {
+      "message": "The file or recognition options are not accepted by the service.",
+      "suggestion": "Check the file type, size, and page count, then submit it again."
+    },
     "network": {
       "message": "The network connection failed.",
       "suggestion": "Check your network or proxy settings, then retry."

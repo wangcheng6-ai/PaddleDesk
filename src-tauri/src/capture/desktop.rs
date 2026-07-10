@@ -70,10 +70,11 @@ pub(crate) fn trigger_capture(app: AppHandle) {
 
 pub(crate) fn set_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
     let manager = app.autolaunch();
-    if enabled {
-        manager.enable()
-    } else {
-        manager.disable()
+    let current = manager.is_enabled().map_err(|error| error.to_string())?;
+    match autostart_change(current, enabled) {
+        Some(true) => manager.enable(),
+        Some(false) => manager.disable(),
+        None => return Ok(()),
     }
     .map_err(|error| error.to_string())
 }
@@ -84,10 +85,24 @@ pub(crate) fn autostart_enabled(app: &AppHandle) -> Result<bool, String> {
         .map_err(|error| error.to_string())
 }
 
+fn autostart_change(current: bool, desired: bool) -> Option<bool> {
+    (current != desired).then_some(desired)
+}
+
 fn tray_menu(app: &AppHandle, language: &str) -> tauri::Result<Menu<tauri::Wry>> {
     let copy = native::native_copy(native::native_locale(language));
     let show = MenuItem::with_id(app, "show", copy.show, true, None::<&str>)?;
     let capture = MenuItem::with_id(app, "capture", copy.capture, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", copy.quit, true, None::<&str>)?;
     Menu::with_items(app, &[&show, &capture, &quit])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::autostart_change;
+
+    #[test]
+    fn disabled_autostart_is_idempotent() {
+        assert_eq!(autostart_change(false, false), None);
+    }
 }

@@ -13,7 +13,7 @@ use serde::Serialize;
 use tokio::sync::{mpsc, Semaphore};
 
 use crate::{
-    api::{InputDoc, OcrService, ParseOptions, ProgressFn},
+    api::{InputDoc, OcrService, ParseCheckpoint, ParseOptions, ProgressFn},
     model::{OcrError, RecognitionResult, ServiceId},
     storage::{AdmittedTask, NewTask, Store},
 };
@@ -124,6 +124,7 @@ impl Queue {
         self.spawn(AdmittedTask {
             task,
             persist_result,
+            upstream_job_ids: Vec::new(),
         });
     }
 
@@ -257,13 +258,17 @@ impl Queue {
             Ok(false) => return None,
             Err(error) => return self.fail(&task.task.id, error),
         }
-        match self.parse_with_retry(&task.task).await {
+        match self.parse_with_retry(task).await {
             Ok(result) => self.finish(task, &result),
             Err(error) => self.fail(&task.task.id, error),
         }
     }
 
-    async fn parse_with_retry(&self, task: &NewTask) -> Result<RecognitionResult, OcrError> {
+    async fn parse_with_retry(
+        &self,
+        admitted: &AdmittedTask,
+    ) -> Result<RecognitionResult, OcrError> {
+        let task = &admitted.task;
         let service = self
             .services
             .get(&task.service)
@@ -274,13 +279,31 @@ impl Queue {
         let input = InputDoc {
             path: task.input_path.clone().into(),
         };
+        let store = Arc::clone(&self.store);
+        let task_id = task.id.clone();
+        let checkpoint = ParseCheckpoint::new(
+            admitted.upstream_job_ids.clone(),
+            Arc::new(move |job_ids| {
+                let store = store
+                    .lock()
+                    .map_err(|_| storage_error("store lock poisoned"))?;
+                match store
+                    .set_upstream_job_ids(&task_id, job_ids)
+                    .map_err(storage_error)?
+                {
+                    true => Ok(()),
+                    false => Err(OcrError::Parse("task is no longer active".into())),
+                }
+            }),
+        );
         for attempt in 0..=MAX_RETRIES {
             let progress_error = Arc::new(Mutex::new(None));
             let result = service
-                .parse(
+                .parse_resumable(
                     &input,
                     &options,
                     self.progress_callback(task.id.clone(), progress_error.clone()),
+                    checkpoint.clone(),
                 )
                 .await;
             if let Some(error) = take_progress_error(&progress_error)? {

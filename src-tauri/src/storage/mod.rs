@@ -22,6 +22,7 @@ pub struct NewTask {
 pub(crate) struct AdmittedTask {
     pub task: NewTask,
     pub persist_result: bool,
+    pub upstream_job_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,7 +65,8 @@ impl Store {
                input_path TEXT NOT NULL, options_json TEXT NOT NULL DEFAULT '{}',
                progress_page INTEGER NOT NULL DEFAULT 0, total_pages INTEGER NOT NULL DEFAULT 0,
                error_kind TEXT, error_msg TEXT,
-               persist_result INTEGER NOT NULL DEFAULT 0);
+               persist_result INTEGER NOT NULL DEFAULT 0,
+               upstream_job_ids_json TEXT NOT NULL DEFAULT '[]');
              CREATE TABLE IF NOT EXISTS results(
                task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
                markdown TEXT NOT NULL, blocks_json TEXT NOT NULL, page_count INTEGER NOT NULL);
@@ -76,6 +78,7 @@ impl Store {
              CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
         ensure_persist_result_column(&connection)?;
+        ensure_upstream_job_ids_column(&connection)?;
         Ok(Store(connection))
     }
 
@@ -172,7 +175,8 @@ impl Store {
         let transaction = self.0.unchecked_transaction()?;
         let task = transaction
             .query_row(
-                "SELECT id, service, input_path, options_json, persist_result FROM tasks
+                "SELECT id, service, input_path, options_json, persist_result,
+                        upstream_job_ids_json FROM tasks
                  WHERE id = ?1 AND status = 'failed'",
                 [id],
                 |row| {
@@ -184,6 +188,7 @@ impl Store {
                             options_json: row.get(3)?,
                         },
                         persist_result: row.get(4)?,
+                        upstream_job_ids: job_ids_from_row(row, 5)?,
                     })
                 },
             )
@@ -214,7 +219,8 @@ impl Store {
 
     pub(crate) fn unfinished_tasks(&self) -> Result<Vec<AdmittedTask>> {
         let mut statement = self.0.prepare(
-            "SELECT id, service, input_path, options_json, persist_result FROM tasks
+            "SELECT id, service, input_path, options_json, persist_result,
+                    upstream_job_ids_json FROM tasks
              WHERE status NOT IN ('done','canceled')",
         )?;
         let rows = statement.query_map([], |row| {
@@ -226,9 +232,20 @@ impl Store {
                     options_json: row.get(3)?,
                 },
                 persist_result: row.get(4)?,
+                upstream_job_ids: job_ids_from_row(row, 5)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub(crate) fn set_upstream_job_ids(&self, id: &str, job_ids: &[String]) -> Result<bool> {
+        let encoded = serde_json::to_string(job_ids)?;
+        let changed = self.0.execute(
+            "UPDATE tasks SET upstream_job_ids_json = ?1
+             WHERE id = ?2 AND status NOT IN ('done','canceled')",
+            params![encoded, id],
+        )?;
+        Ok(changed == 1)
     }
 
     pub fn save_result(
@@ -383,6 +400,28 @@ fn ensure_persist_result_column(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_upstream_job_ids_column(connection: &Connection) -> Result<()> {
+    let mut statement = connection.prepare("PRAGMA table_info(tasks)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let mut found = false;
+    for column in columns {
+        found |= column? == "upstream_job_ids_json";
+    }
+    if !found {
+        connection.execute(
+            "ALTER TABLE tasks ADD COLUMN upstream_job_ids_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+fn job_ids_from_row(row: &Row<'_>, index: usize) -> rusqlite::Result<Vec<String>> {
+    let encoded: String = row.get(index)?;
+    serde_json::from_str(&encoded)
+        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(index, Type::Text, error.into()))
+}
+
 fn write_result(
     connection: &Connection,
     task_id: &str,
@@ -511,6 +550,26 @@ mod tests {
         assert_eq!(s.unfinished_tasks().unwrap().len(), 1);
         s.update_status("t1", "done", None, None).unwrap();
         assert!(s.unfinished_tasks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn upstream_job_ids_survive_resume() {
+        let (_d, s) = tmp_store();
+        s.insert_task(
+            &NewTask {
+                id: "resume-job".into(),
+                service: ServiceId::Vl16,
+                input_path: "resume.pdf".into(),
+                options_json: "{}".into(),
+            },
+            true,
+        )
+        .unwrap();
+        s.set_upstream_job_ids("resume-job", &["job-a".into(), "job-b".into()])
+            .unwrap();
+
+        let task = s.unfinished_tasks().unwrap().pop().unwrap();
+        assert_eq!(task.upstream_job_ids, ["job-a", "job-b"]);
     }
 
     #[test]
@@ -692,7 +751,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_legacy_database_adds_admission_policy_column() {
+    fn opening_legacy_database_adds_task_policy_columns() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("legacy.db");
         let legacy = Connection::open(&path).unwrap();
@@ -715,6 +774,7 @@ mod tests {
         let tasks = store.unfinished_tasks().unwrap();
         assert_eq!(tasks.len(), 1);
         assert!(!tasks[0].persist_result);
+        assert!(tasks[0].upstream_job_ids.is_empty());
     }
 
     #[test]

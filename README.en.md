@@ -22,7 +22,7 @@ English | [简体中文](README.md)
 
 PaddleDesk connects to Baidu AI Studio's three official PaddleOCR cloud services and turns complex documents (tables, formulas, multi-column layouts, handwriting) into editable, exportable structured results. The client is lightweight, ships no bundled models, and accuracy improves continuously with the official cloud models.
 
-> **Privacy notice**: images and documents are uploaded to Baidu Cloud for recognition. Use an offline OCR tool (such as [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR)) if a file must remain on your device.
+> **Privacy notice**: images and documents are uploaded to Baidu Cloud for recognition. Use an offline OCR tool if a file must remain on your device.
 
 ## Preview
 
@@ -81,21 +81,6 @@ Requires Windows 10/11 with WebView2 (bundled with Windows 11). You can also bui
 2. Open the [official PaddleOCR page](https://aistudio.baidu.com/paddleocr), sign in to Baidu AI Studio, and follow the page instructions to create and copy an access token.
 3. Paste and validate it in the wizard. A valid token is stored only in Windows Credential Manager.
 4. Drop files, paste a clipboard image, or press `Ctrl+Alt+S` to capture part of the screen.
-
-## PaddleDesk vs Umi-OCR
-
-[Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) is a mature, free offline OCR application. The products serve different priorities; neither is universally better.
-
-| Area | PaddleDesk | Umi-OCR |
-| --- | --- | --- |
-| Primary goal | Official cloud models, complex layouts, and structured document output | Local offline processing, broad plugins, and general OCR workflows |
-| Models | Cloud PaddleOCR-VL-1.6, PP-OCRv6, and PP-StructureV3 | Local OCR plugins/models; results depend on the selected runtime |
-| Accuracy claim | Designed to benefit from current cloud models on complex documents, tables, and formulas. No shared benchmark has been published, so PaddleDesk does not claim a universal win | Very capable for local general OCR; test representative documents before choosing |
-| Client footprint | Lightweight client without bundled large models; requires a network connection and cloud quota | Includes or downloads local runtimes/models, so installation is generally larger; no cloud OCR quota |
-| Privacy | Documents go to Baidu Cloud; the token stays in Windows Credential Manager | OCR can remain fully offline and is preferable for sensitive files |
-| Platforms | Windows today | Windows and Linux according to the official project |
-
-Choose Umi-OCR when offline processing is mandatory. Consider PaddleDesk when cloud processing is acceptable and complex-document capability plus a lightweight client matter more.
 
 ## Architecture
 
@@ -174,4 +159,3 @@ Released under the [MIT License](LICENSE).
 - **[Tauri](https://tauri.app/)** — the lightweight, secure desktop application framework.
 - **[PDF.js](https://mozilla.github.io/pdf.js/)** — source-page preview.
 - **[react-markdown](https://github.com/remarkjs/react-markdown)** and **[KaTeX](https://katex.org/)** — Markdown and formula rendering.
-- **[Umi-OCR](https://github.com/hiroi-sora/Umi-OCR)** — an excellent offline OCR tool and an important reference point for this project's positioning.

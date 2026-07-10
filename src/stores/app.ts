@@ -4,7 +4,6 @@ export type View =
   | "home"
   | "viewer"
   | "queue"
-  | "history"
   | "usage"
   | "settings";
 
@@ -21,6 +20,7 @@ export interface TaskSummary {
   error_kind?: string | null;
   error_msg?: string | null;
   created_at?: number;
+  batch_id?: string | null;
 }
 
 type TaskField = Exclude<keyof TaskSummary, "id">;
@@ -47,8 +47,11 @@ export interface AppState {
   beginTaskSnapshot: () => TaskSnapshot;
   upsertTask: (task: TaskSummary) => void;
   mergeTasks: (tasks: TaskSummary[], snapshot: TaskSnapshot) => void;
+  removeTask: (id: string) => void;
   selectedTaskId: string | null;
   setSelectedTaskId: (id: string | null) => void;
+  autoOpenTaskId: string | null;
+  setAutoOpenTaskId: (id: string | null) => void;
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -142,6 +145,10 @@ export const useApp = create<AppState>((set, get) => ({
         taskSnapshotApplied: snapshot.requestId,
       };
     }),
+  removeTask: (id) =>
+    set((state) => ({ tasks: state.tasks.filter((task) => task.id !== id) })),
   selectedTaskId: null,
   setSelectedTaskId: (selectedTaskId) => set({ selectedTaskId }),
+  autoOpenTaskId: null,
+  setAutoOpenTaskId: (autoOpenTaskId) => set({ autoOpenTaskId }),
 }));

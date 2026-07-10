@@ -1,6 +1,5 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { scaleBbox } from "../lib/bbox";
 import type { RecognitionResult } from "../lib/ipc";
@@ -13,14 +12,22 @@ interface OriginalPaneProps {
   inputPath: string;
   result: RecognitionResult;
   sourceBytes: Uint8Array | null;
+  sourceUnavailable?: boolean;
 }
 
-export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPaneProps) {
+export function OriginalPane({
+  inputPath,
+  result,
+  sourceBytes,
+  sourceUnavailable = false,
+}: OriginalPaneProps) {
   const { t } = useTranslation();
   const [pageIndex, setPageIndex] = useState(0);
   const [showBboxes, setShowBboxes] = useState(true);
   const [pdfSize, setPdfSize] = useState<{ width: number; height: number } | null>(null);
   const [pdfFailed, setPdfFailed] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const page = result.pages[pageIndex];
   const isPdf = /\.pdf$/i.test(inputPath);
   const onPdfSize = useCallback((size: { width: number; height: number }) => {
@@ -28,6 +35,24 @@ export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPanePro
     setPdfFailed(false);
   }, []);
   const onPdfError = useCallback(() => setPdfFailed(true), []);
+
+  useEffect(() => {
+    if (isPdf || !sourceBytes) {
+      setImageUrl(null);
+      return;
+    }
+    const extension = inputPath.split(".").pop()?.toLowerCase();
+    const mime =
+      extension === "jpg" || extension === "jpeg"
+        ? "image/jpeg"
+        : extension === "webp"
+          ? "image/webp"
+          : "image/png";
+    const url = URL.createObjectURL(new Blob([sourceBytes], { type: mime }));
+    setImageUrl(url);
+    setImageFailed(false);
+    return () => URL.revokeObjectURL(url);
+  }, [inputPath, isPdf, sourceBytes]);
 
   return (
     <section className="viewer-panel original-pane" aria-label={t("viewer.original")}>
@@ -49,7 +74,9 @@ export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPanePro
           className="original-image-frame"
           style={pdfSize ? { aspectRatio: `${pdfSize.width} / ${pdfSize.height}` } : undefined}
         >
-          {isPdf ? (
+          {sourceUnavailable ? (
+            <div className="pdf-placeholder">{t("viewer.sourceUnavailable")}</div>
+          ) : isPdf ? (
             sourceBytes ? (
               <Suspense fallback={<div className="pdf-placeholder">{t("common.loading")}</div>}>
                 <PdfPage
@@ -62,8 +89,14 @@ export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPanePro
             ) : (
               <div className="pdf-placeholder">{t("common.loading")}</div>
             )
+          ) : imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={t("viewer.originalAlt")}
+              onError={() => setImageFailed(true)}
+            />
           ) : (
-            <img src={convertFileSrc(inputPath)} alt={t("viewer.originalAlt")} />
+            <div className="pdf-placeholder">{t("common.loading")}</div>
           )}
           {showBboxes && page ? (
             <div className="bbox-layer" aria-hidden="true">
@@ -90,7 +123,7 @@ export function OriginalPane({ inputPath, result, sourceBytes }: OriginalPanePro
             </div>
           ) : null}
         </div>
-        {pdfFailed ? <p role="alert">{t("viewer.pdfLoadFailed")}</p> : null}
+        {pdfFailed || imageFailed ? <p role="alert">{t("viewer.sourceUnavailable")}</p> : null}
       </div>
 
       {(isPdf || result.pages.length > 1) && (

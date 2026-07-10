@@ -35,14 +35,15 @@ test("getSettings preserves the Record returned by Tauri", async () => {
 
 test("task command wrappers use the current Rust argument names exactly", async () => {
   invokeMock
-    .mockResolvedValueOnce(["task-1"])
+    .mockResolvedValueOnce({ batch_id: "batch-1", task_ids: ["task-1"] })
     .mockResolvedValueOnce([])
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce(null);
 
-  await expect(createTasks(["C:/docs/a.png"], "pp_ocr_v6")).resolves.toEqual([
-    "task-1",
-  ]);
+  await expect(createTasks(["C:/docs/a.png"], "pp_ocr_v6")).resolves.toEqual({
+    batch_id: "batch-1",
+    task_ids: ["task-1"],
+  });
   await expect(listTasks(null)).resolves.toEqual([]);
   await cancelTask("task-1");
   await retryTask("task-1");
@@ -59,9 +60,9 @@ test("task command wrappers use the current Rust argument names exactly", async 
   ]);
 });
 
-test("subscribes to exactly four task events and maps event.payload", async () => {
+test("subscribes to submitted and four task lifecycle events", async () => {
   const updates: unknown[] = [];
-  const unlisteners = Array.from({ length: 4 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 5 }, () => vi.fn());
   listenMock.mockImplementation(async () => {
     return unlisteners[listenMock.mock.calls.length - 1];
   });
@@ -71,6 +72,9 @@ test("subscribes to exactly four task events and maps event.payload", async () =
     listenMock.mock.calls.map(([name, handler]) => [name, handler]),
   );
 
+  handlers["task:submitted"]({
+    payload: { task: { id: "0", service: "vl16", status: "pending" } },
+  });
   handlers["task:progress"]({
     payload: { id: "1", stage: "processing", page: 2, total: 4 },
   });
@@ -81,12 +85,14 @@ test("subscribes to exactly four task events and maps event.payload", async () =
   handlers["task:canceled"]({ payload: { id: "3" } });
 
   expect(listenMock.mock.calls.map(([name]) => name)).toEqual([
+    "task:submitted",
     "task:progress",
     "task:done",
     "task:failed",
     "task:canceled",
   ]);
   expect(updates).toEqual([
+    { id: "0", service: "vl16", status: "pending" },
     {
       id: "1",
       status: "processing",

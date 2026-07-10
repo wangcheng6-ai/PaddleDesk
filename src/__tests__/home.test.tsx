@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const {
@@ -60,7 +60,7 @@ beforeEach(async () => {
 
 afterEach(cleanup);
 
-test("shows the newest five tasks and opens the double-clicked result", async () => {
+test("shows the newest five tasks and opens the clicked result", async () => {
   render(<Home />);
 
   const recent = await screen.findByRole("list", { name: "最近任务" });
@@ -75,7 +75,7 @@ test("shows the newest five tasks and opens the double-clicked result", async ()
   ]);
   expect(within(recent).queryByText("task-1.png")).not.toBeInTheDocument();
 
-  fireEvent.doubleClick(within(rows[0]).getByRole("button"));
+  fireEvent.click(within(rows[0]).getByRole("button"));
   expect(useApp.getState().selectedTaskId).toBe("task-6");
   expect(useApp.getState().view).toBe("viewer");
   expect(invokeMock).toHaveBeenCalledWith("list_tasks", { status: null });
@@ -92,15 +92,19 @@ test("opens a recent task from the keyboard", async () => {
   expect(useApp.getState().view).toBe("viewer");
 });
 
-test("renders three service cards bound to the shared service selection", async () => {
+test("shows only recent tasks for the current service", async () => {
+  invokeMock.mockImplementation(async (command) => {
+    if (command === "list_tasks") {
+      return [
+        tasks[0],
+        { ...tasks[1], id: "other", service: "pp_ocr_v6", input_path: "other.png" },
+      ];
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
   render(<Home />);
-  await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_tasks", { status: null }));
-
-  const services = screen.getByRole("group", { name: "选择服务" });
-  expect(within(services).getAllByRole("button")).toHaveLength(3);
-  fireEvent.click(within(services).getByRole("button", { name: /PP-OCRv6/ }));
-
-  expect(useApp.getState().service).toBe("pp_ocr_v6");
+  await screen.findByText("task-1.png");
+  expect(screen.queryByText("other.png")).not.toBeInTheDocument();
 });
 
 test("refreshes list metadata after creating tasks", async () => {
@@ -120,7 +124,7 @@ test("refreshes list metadata after creating tasks", async () => {
             },
           ];
     }
-    if (command === "create_tasks") return ["created"];
+    if (command === "create_tasks") return { batch_id: "batch", task_ids: ["created"] };
     throw new Error(`unexpected command: ${command} ${JSON.stringify(args)}`);
   });
   openMock.mockResolvedValue(["C:/docs/created.png"]);
@@ -147,7 +151,7 @@ test("does not report task creation as failed when only the follow-up refresh fa
       if (listCalls === 1) return [];
       throw new Error("refresh unavailable");
     }
-    if (command === "create_tasks") return ["created"];
+    if (command === "create_tasks") return { batch_id: "batch", task_ids: ["created"] };
     throw new Error(`unexpected command: ${command}`);
   });
   openMock.mockResolvedValue(["C:/docs/created.png"]);
@@ -181,7 +185,7 @@ test("clears an initial load error after a successful post-create refresh", asyn
         },
       ];
     }
-    if (command === "create_tasks") return ["created"];
+    if (command === "create_tasks") return { batch_id: "batch", task_ids: ["created"] };
     throw new Error(`unexpected command: ${command}`);
   });
   openMock.mockResolvedValue(["C:/docs/created.png"]);

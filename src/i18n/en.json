@@ -6,7 +6,7 @@
   "nav": {
     "label": "Main navigation",
     "home": "Home",
-    "viewer": "Result Viewer",
+    "viewer": "Recognition Results",
     "queue": "Task Queue",
     "history": "History",
     "usage": "Usage",
@@ -16,7 +16,8 @@
     "selectorLabel": "Recognition service",
     "vl16": "PaddleOCR-VL-1.6",
     "ppOcrV6": "PP-OCRv6",
-    "structureV3": "PP-StructureV3"
+    "structureV3": "PP-StructureV3",
+    "badges": "{{active}} active, {{failed}} failed"
   },
   "usage": {
     "today": "Today's usage",
@@ -26,16 +27,25 @@
     "serviceBreakdown": "Service breakdown",
     "lastSevenDays": "Last 7 days",
     "pages": "{{count}} pages",
-    "loadFailed": "Usage data could not be loaded."
+    "loadFailed": "Usage data could not be loaded.",
+    "allServiceSummary": "All-service quota summary"
   },
   "actions": {
     "retry": "Retry",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "chooseFiles": "Choose files",
     "capture": "Capture text",
-    "captureHint": "Capture text (Ctrl+Alt+S)",
+    "captureHint": "Capture with the current service",
     "dismiss": "Dismiss",
-    "back": "Back"
+    "back": "Back",
+    "viewResult": "View result",
+    "copy": "Copy",
+    "delete": "Delete",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "show": "Show",
+    "hide": "Hide"
   },
   "common": {
     "loading": "Loading…"
@@ -51,7 +61,7 @@
     "selectService": "Choose a service",
     "serviceHelp": "Select an official cloud model for the task",
     "recent": "Recent tasks",
-    "recentHint": "Double-click to open the result",
+    "recentHint": "Click to open a task or result",
     "loadFailed": "Recent tasks could not be loaded.",
     "empty": "No tasks yet. Choose or drop files to get started.",
     "serviceCards": {
@@ -73,6 +83,7 @@
     }
   },
   "queue": {
+    "batchProgress": "Batch {{done}} / {{total}}",
     "summary": "{{active}} active · {{failed}} failed",
     "loadFailed": "The task queue could not be loaded.",
     "actionFailed": "The action failed. Please try again.",
@@ -94,9 +105,17 @@
     "noResult": "This task does not have a result yet.",
     "loadFailed": "The recognition result could not be loaded.",
     "exportFailed": "The export failed. Please try again.",
+    "resultList": "Results for the current service",
+    "sessionOnly": "This session only",
+    "sourceUnavailable": "The source file is unavailable. The OCR result can still be viewed and exported.",
+    "missingMarkdownImage": "The referenced image was not returned by the service: {{alt}}",
+    "confirmDelete": "Delete this result? Actual API usage will not be reduced.",
+    "confirmClear": "Clear every result for the current service? Actual API usage will not be reduced.",
+    "clearResults": "Clear current service results",
     "copyLatex": "Copy LaTeX",
     "tabs": {
-      "markdown": "Markdown",
+      "preview": "Preview",
+      "source": "Markdown source",
       "json": "JSON",
       "text": "Plain text"
     },
@@ -165,10 +184,14 @@
     }
   },
   "runtime": {
+    "batchCompleted": "All {{count}} tasks in this batch have finished",
+    "openCompletedFailed": "Could not switch to the service for this result. Try again.",
     "queueEventsUnavailable": "Task updates are unavailable.",
     "connectingQueueEvents": "Connecting to task updates…",
     "clipboardImageUnavailable": "No image is available on the clipboard.",
-    "captureFailed": "Screen capture could not be started."
+    "captureFailed": "Screen capture could not be started.",
+    "taskCompleted": "Recognition completed.",
+    "serviceSwitchFailed": "The service change was not saved; the previous service remains active."
   },
   "onboarding": {
     "progress": "Setup step {{step}} of 2",
@@ -184,7 +207,7 @@
     "token": {
       "title": "Connect PaddleOCR",
       "subtitle": "Get a free AI Studio access token and validate it immediately.",
-      "step1": "Open the official PaddleOCR task page and sign in to Baidu AI Studio.",
+      "step1": "Open the official PaddleOCR page and sign in to Baidu AI Studio. The page shows how to create an API token.",
       "step2": "Follow the page instructions to create or copy an access token.",
       "step3": "Paste it below. Once validated, recognition is ready to use.",
       "openStudio": "Open AI Studio",
@@ -205,7 +228,7 @@
   },
   "viewTitles": {
     "home": "Home",
-    "viewer": "Result Viewer",
+    "viewer": "Recognition Results",
     "queue": "Task Queue",
     "history": "History",
     "usage": "Usage",
@@ -222,6 +245,15 @@
   },
   "settings": {
     "saveFailed": "The setting could not be saved. Please try again.",
+    "about": {
+      "title": "About",
+      "updateHint": "PaddleDesk checks for updates at startup. You can also check manually here.",
+      "checkUpdates": "Check for updates",
+      "checking": "Checking…",
+      "latest": "You are on the latest version.",
+      "checkFailed": "Update check failed. Check your connection and try again.",
+      "installFound": "Update to {{version}}"
+    },
     "account": {
       "title": "AI Studio account",
       "cloudDisclosure": "Documents are uploaded to Baidu Cloud for recognition. Your token is stored only in Windows Credential Manager.",
@@ -231,18 +263,29 @@
       "valid": "Token validated and stored securely.",
       "invalid": "The token is invalid.",
       "failed": "The token could not be validated. Check your connection and try again.",
-      "openOnboarding": "Open setup guide again"
+      "openOnboarding": "Open setup guide again",
+      "currentToken": "Current token",
+      "notConfigured": "No access token configured",
+      "replaceToken": "Replace access token",
+      "confirmDelete": "Delete the stored access token?"
     },
     "recognition": {
       "title": "Recognition",
       "defaultService": "Default service",
       "concurrency": "Concurrent tasks",
-      "hotkey": "Screen recognition shortcut: {{hotkey}}"
+      "concurrencyRestart": "Restart the app after changing concurrent tasks.",
+      "hotkey": "Screen recognition shortcut: {{hotkey}}",
+      "hotkeyLabel": "Screen recognition shortcut",
+      "recording": "Press the new shortcut…",
+      "recordHotkey": "Record shortcut",
+      "restoreHotkey": "Restore Ctrl+Alt+S",
+      "hotkeyUnavailable": "The shortcut could not be registered. The app still works; record another shortcut."
     },
     "privacy": {
       "title": "Privacy and network",
       "privacyMode": "Privacy mode",
-      "privacyHint": "When enabled, only page counts are kept; results and searchable history are not stored locally.",
+      "saveHistory": "Save recognition results",
+      "privacyHint": "When off, new results remain viewable and exportable only for this session. Existing saved results are retained.",
       "proxyMode": "Proxy mode",
       "proxyAddress": "Custom proxy address",
       "proxyAddressPlaceholder": "For example, http://127.0.0.1:7890"

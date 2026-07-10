@@ -29,9 +29,15 @@ import { initI18n } from "../i18n";
 import { useApp } from "../stores/app";
 
 beforeEach(async () => {
-  invokeMock.mockReset().mockImplementation(async (command) =>
-    command === "get_settings" ? { language: "zh-CN" } : [],
-  );
+  invokeMock.mockReset().mockImplementation(async (command) => {
+    if (command === "get_settings") return { language: "zh-CN" };
+    if (command === "get_credential_status") {
+      return { configured: false, last_four: null };
+    }
+    if (command === "get_screenshot_hotkey") return "Ctrl+Alt+S";
+    if (command === "set_settings") return null;
+    return [];
+  });
   listenMock.mockReset().mockImplementation(async () => vi.fn());
   onDragDropEventMock.mockReset().mockImplementation(async () => vi.fn());
   getCurrentWebviewMock.mockReset().mockReturnValue({
@@ -70,11 +76,11 @@ test("renders the approved brand icon instead of a letter placeholder", () => {
   expect(brand?.querySelector("span.brand-mark")).toBeNull();
 });
 
-test("renders six semantic nav buttons and switches the current view", () => {
+test("renders five semantic nav buttons and switches the current view", () => {
   render(<App />);
 
   const nav = screen.getByRole("navigation", { name: "主导航" });
-  expect(within(nav).getAllByRole("button")).toHaveLength(6);
+  expect(within(nav).getAllByRole("button")).toHaveLength(5);
   expect(within(nav).getByRole("button", { name: "主页" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -92,10 +98,13 @@ test("renders six semantic nav buttons and switches the current view", () => {
 test("switches among the three service wire values", async () => {
   render(<App />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "PP-OCRv6" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^PP-OCRv6/ }));
 
-  expect(useApp.getState().service).toBe("pp_ocr_v6");
-  expect(screen.getByRole("button", { name: "PP-OCRv6" })).toHaveAttribute(
+  await waitFor(() => expect(useApp.getState().service).toBe("pp_ocr_v6"));
+  expect(invokeMock).toHaveBeenCalledWith("set_settings", {
+    map: { current_service: "pp_ocr_v6" },
+  });
+  expect(screen.getByRole("button", { name: /^PP-OCRv6/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -115,7 +124,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   expect(invokeMock).not.toHaveBeenCalledWith("list_tasks", { status: null });
   expect(onDragDropEventMock).not.toHaveBeenCalled();
 
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 6; index += 1) {
     await act(async () => {
       resolveListeners[index](vi.fn());
       await flushPromises();
@@ -125,7 +134,7 @@ test("waits for all task listeners before mounting the task view", async () => {
   }
 
   await act(async () => {
-    resolveListeners[5](vi.fn());
+    resolveListeners[6](vi.fn());
     await flushPromises();
   });
 
@@ -136,7 +145,7 @@ test("waits for all task listeners before mounting the task view", async () => {
 });
 
 test("StrictMode and unmount eventually release every async listener", async () => {
-  const unlisteners = Array.from({ length: 12 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 14 }, () => vi.fn());
   listenMock.mockImplementation(async () => {
     const unlisten = unlisteners[listenMock.mock.calls.length - 1];
     return unlisten;
@@ -149,7 +158,7 @@ test("StrictMode and unmount eventually release every async listener", async () 
   );
   unmount();
 
-  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(12));
+  await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(14));
   await waitFor(() => {
     for (const unlisten of unlisteners) {
       expect(unlisten).toHaveBeenCalledOnce();
@@ -159,7 +168,7 @@ test("StrictMode and unmount eventually release every async listener", async () 
 
 test("shows a localized retryable alert when listener registration fails", async () => {
   vi.useFakeTimers();
-  const unlisteners = Array.from({ length: 6 }, () => vi.fn());
+  const unlisteners = Array.from({ length: 7 }, () => vi.fn());
   listenMock
     .mockRejectedValueOnce(new Error("listen unavailable"))
     .mockResolvedValueOnce(unlisteners[0])
@@ -167,7 +176,8 @@ test("shows a localized retryable alert when listener registration fails", async
     .mockResolvedValueOnce(unlisteners[2])
     .mockResolvedValueOnce(unlisteners[3])
     .mockResolvedValueOnce(unlisteners[4])
-    .mockResolvedValueOnce(unlisteners[5]);
+    .mockResolvedValueOnce(unlisteners[5])
+    .mockResolvedValueOnce(unlisteners[6]);
 
   const { unmount } = render(<App />);
   await act(flushPromises);
@@ -181,7 +191,7 @@ test("shows a localized retryable alert when listener registration fails", async
     await flushPromises();
   });
 
-  expect(listenMock).toHaveBeenCalledTimes(7);
+  expect(listenMock).toHaveBeenCalledTimes(8);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   unmount();
   for (const unlisten of unlisteners) {

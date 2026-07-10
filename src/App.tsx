@@ -12,10 +12,10 @@ import {
   onCaptureDone,
   onQueueEvent,
   onUsageUpdated,
+  setSettings,
 } from "./lib/ipc";
 import { useApp, type View } from "./stores/app";
 import { Home } from "./views/Home";
-import { History } from "./views/History";
 import { Queue } from "./views/Queue";
 import { Settings } from "./views/Settings";
 import { Usage } from "./views/Usage";
@@ -25,7 +25,6 @@ const titleKeys: Record<View, string> = {
   home: "viewTitles.home",
   viewer: "viewTitles.viewer",
   queue: "viewTitles.queue",
-  history: "viewTitles.history",
   usage: "viewTitles.usage",
   settings: "viewTitles.settings",
 };
@@ -35,20 +34,38 @@ function App() {
   const view = useApp((state) => state.view);
   const service = useApp((state) => state.service);
   const setView = useApp((state) => state.setView);
+  const setService = useApp((state) => state.setService);
   const setSelectedTaskId = useApp((state) => state.setSelectedTaskId);
   const upsertTask = useApp((state) => state.upsertTask);
+  const setAutoOpenTaskId = useApp((state) => state.setAutoOpenTaskId);
   const setTodayPages = useApp((state) => state.setTodayPages);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [subscriptionFailed, setSubscriptionFailed] = useState(false);
   const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
   const [desktopActionFailed, setDesktopActionFailed] = useState(false);
+  const [completionOpenFailed, setCompletionOpenFailed] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean | null>(null);
+  const [completion, setCompletion] = useState<{
+    taskId: string;
+    batchSize: number;
+    service?: typeof service;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
     void getSettings().then(
       (settings) => {
-        if (active) setOnboardingOpen(settings.onboarding_complete !== "1");
+        if (active) {
+          setOnboardingOpen(settings.onboarding_complete !== "1");
+          const current = settings.current_service;
+          if (
+            current === "vl16" ||
+            current === "pp_ocr_v6" ||
+            current === "structure_v3"
+          ) {
+            setService(current);
+          }
+        }
       },
       () => {
         if (active) setOnboardingOpen(true);
@@ -57,7 +74,7 @@ function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [setService]);
 
   useEffect(() => {
     let disposed = false;
@@ -82,12 +99,70 @@ function App() {
     };
 
     void (async () => {
-      unlisteners.push(await onQueueEvent(upsertTask));
+      unlisteners.push(
+        await onQueueEvent((update) => {
+          upsertTask(update);
+          const current = useApp.getState();
+          const task = current.tasks.find(({ id }) => id === update.id);
+          const terminal = ["done", "failed", "canceled"].includes(
+            update.status ?? "",
+          );
+          if (task?.batch_id && terminal) {
+            const batch = current.tasks.filter(
+              ({ batch_id }) => batch_id === task.batch_id,
+            );
+            const batchFinished = batch.every(({ status }) =>
+              ["done", "failed", "canceled"].includes(status ?? ""),
+            );
+            if (batch.length > 1 && batchFinished) {
+              const result = [...batch]
+                .reverse()
+                .find(({ status }) => status === "done");
+              if (result) {
+                setCompletion({
+                  taskId: result.id,
+                  batchSize: batch.length,
+                  service: result.service,
+                });
+              }
+              return;
+            }
+          }
+          if (update.status !== "done") return;
+          if (
+            current.autoOpenTaskId === update.id &&
+            task?.service === current.service &&
+            (current.view === "home" || current.view === "queue")
+          ) {
+            current.setSelectedTaskId(update.id);
+            current.setAutoOpenTaskId(null);
+            current.setView("viewer");
+          } else {
+            if (current.autoOpenTaskId === update.id) {
+              current.setAutoOpenTaskId(null);
+            }
+            setCompletion({
+              taskId: update.id,
+              batchSize: 1,
+              service: task?.service,
+            });
+          }
+        }),
+      );
       unlisteners.push(await onUsageUpdated(() => void refreshUsage()));
       unlisteners.push(
         await onCaptureDone((taskId) => {
-          setSelectedTaskId(taskId);
-          setView("viewer");
+          const current = useApp.getState();
+          const task = current.tasks.find(({ id }) => id === taskId);
+          if (
+            document.visibilityState === "visible" &&
+            (!task?.service || task.service === current.service)
+          ) {
+            current.setSelectedTaskId(taskId);
+            current.setView("viewer");
+          } else {
+            setCompletion({ taskId, batchSize: 1, service: task?.service });
+          }
         }),
       );
       if (disposed) {
@@ -126,17 +201,23 @@ function App() {
       }
       event.preventDefault();
       void createTaskFromClipboard(service).then(
-        () => {
+        (taskId) => {
           setDesktopActionFailed(false);
+          setAutoOpenTaskId(taskId);
           setView("queue");
         },
-        () => setDesktopActionFailed(true),
+        (error) => {
+          setDesktopActionFailed(true);
+          if (String(error).toLowerCase().includes("authentication")) {
+            setView("settings");
+          }
+        },
       );
     };
 
     window.addEventListener("keydown", pasteClipboardImage);
     return () => window.removeEventListener("keydown", pasteClipboardImage);
-  }, [service, setView, view]);
+  }, [service, setAutoOpenTaskId, setView, view]);
 
   const taskView = view === "home" || view === "queue";
   const content =
@@ -150,8 +231,6 @@ function App() {
       <Queue />
     ) : view === "viewer" ? (
       <Viewer />
-    ) : view === "history" ? (
-      <History />
     ) : view === "usage" ? (
       <Usage />
     ) : view === "settings" ? (
@@ -187,6 +266,48 @@ function App() {
             </button>
           </div>
         )}
+        {completionOpenFailed ? (
+          <div className="runtime-alert" role="alert">
+            <span>{t("runtime.openCompletedFailed")}</span>
+            <button type="button" onClick={() => setCompletionOpenFailed(false)}>
+              {t("actions.dismiss")}
+            </button>
+          </div>
+        ) : null}
+        {completion ? (
+          <div className="runtime-alert" role="status">
+            <span>
+              {completion.batchSize > 1
+                ? t("runtime.batchCompleted", { count: completion.batchSize })
+                : t("runtime.taskCompleted")}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                void (async () => {
+                  setCompletionOpenFailed(false);
+                  if (completion.service && completion.service !== service) {
+                    try {
+                      await setSettings({ current_service: completion.service });
+                      setService(completion.service);
+                    } catch {
+                      setCompletionOpenFailed(true);
+                      return;
+                    }
+                  }
+                  setSelectedTaskId(completion.taskId);
+                  setCompletion(null);
+                  setView("viewer");
+                })()
+              }
+            >
+              {t("actions.viewResult")}
+            </button>
+            <button type="button" onClick={() => setCompletion(null)}>
+              {t("actions.dismiss")}
+            </button>
+          </div>
+        ) : null}
         <main className="view-content">{content}</main>
       </section>
       <Onboarding open={onboardingOpen === true} onClose={() => setOnboardingOpen(false)} />

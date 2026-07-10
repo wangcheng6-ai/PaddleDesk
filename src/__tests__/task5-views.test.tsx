@@ -8,45 +8,47 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { initI18n } from "../i18n";
 import { useApp } from "../stores/app";
-import { History } from "../views/History";
 import { Settings } from "../views/Settings";
 import { Usage } from "../views/Usage";
-
-const doneTask = {
-  id: "done",
-  service: "vl16",
-  status: "done",
-  input_path: "C:/docs/done.png",
-  created_at: 1783612800,
-};
+import { Viewer } from "../views/Viewer";
 
 beforeEach(async () => {
   Object.defineProperty(navigator, "language", {
     configurable: true,
     value: "zh-CN",
   });
-  invokeMock.mockReset().mockImplementation(async (command) => {
+  invokeMock.mockReset().mockImplementation(async (command, args) => {
     if (command === "get_settings") {
       return {
         language: "zh-CN",
         theme: "system",
-        default_service: "vl16",
         concurrency: "2",
-        privacy_mode: "0",
+        save_history: "1",
         proxy_mode: "system",
         autostart: "0",
       };
     }
-    if (command === "list_tasks") return [doneTask];
-    if (command === "search_history") {
+    if (command === "get_credential_status") {
+      return { configured: true, last_four: "1234" };
+    }
+    if (command === "get_screenshot_hotkey") return "Ctrl+Alt+S";
+    if (command === "set_screenshot_hotkey") return args.shortcut;
+    if (command === "reveal_token") return "token-value-1234";
+    if (command === "delete_token") return null;
+    if (command === "list_results") {
       return [
         {
           task_id: "done",
+          service: "vl16",
           file_name: "done.png",
           snippet: "卷积神经网络",
           created_at: 1783612800,
+          temporary: false,
         },
       ];
+    }
+    if (command === "get_result") {
+      return { markdown: "卷积神经网络", page_count: 1, pages: [] };
     }
     if (command === "get_usage") {
       return [
@@ -71,27 +73,29 @@ beforeEach(async () => {
 
 afterEach(cleanup);
 
-test("debounces history search and opens a matching task", async () => {
-  render(<History />);
+test("defaults to the newest service result and searches OCR content", async () => {
+  render(<Viewer />);
   expect(await screen.findByText("done.png")).toBeInTheDocument();
+  await waitFor(() => expect(useApp.getState().selectedTaskId).toBe("done"));
 
   fireEvent.change(screen.getByRole("searchbox", { name: "搜索历史" }), {
     target: { value: "卷积" },
   });
   await waitFor(() =>
-    expect(invokeMock).toHaveBeenCalledWith("search_history", { query: "卷积" }),
+    expect(invokeMock).toHaveBeenCalledWith("list_results", {
+      service: "vl16",
+      query: "卷积",
+    }),
   );
-  expect(screen.getByText("卷积神经网络")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: /done\.png/ }));
-  expect(useApp.getState().selectedTaskId).toBe("done");
-  expect(useApp.getState().view).toBe("viewer");
+  expect(screen.getAllByText("卷积神经网络")).toHaveLength(2);
 });
 
-test("shows per-service quota rings and seven-day usage", async () => {
+test("shows quota rings for all three services and seven-day usage", async () => {
   render(<Usage />);
 
   expect(await screen.findByText("12 / 20,000 页")).toBeInTheDocument();
+  expect(screen.getByText("3 / 20,000 页")).toBeInTheDocument();
+  expect(screen.getByText("0 / 20,000 页")).toBeInTheDocument();
   expect(screen.getAllByRole("progressbar")).toHaveLength(3);
   expect(screen.getByText("近 7 日")).toBeInTheDocument();
 });
@@ -99,6 +103,7 @@ test("shows per-service quota rings and seven-day usage", async () => {
 test("persists language choices and applies them immediately", async () => {
   render(<Settings />);
   await screen.findByRole("heading", { name: "设置" });
+  expect(screen.getByText("修改并发任务数后，重启应用生效。")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "English" }));
   await waitFor(() => expect(i18next.language).toBe("en"));
@@ -113,4 +118,29 @@ test("persists language choices and applies them immediately", async () => {
   expect(invokeMock).toHaveBeenCalledWith("set_settings", {
     map: { language: "system" },
   });
+});
+
+test("reveals configured credentials and records hotkeys without losing the old value on failure", async () => {
+  render(<Settings />);
+
+  const tokenField = await screen.findByLabelText("当前 Token");
+  expect(tokenField).toHaveValue("••••••••1234");
+  fireEvent.click(screen.getByRole("button", { name: "显示" }));
+  await waitFor(() => expect(tokenField).toHaveValue("token-value-1234"));
+  fireEvent.click(screen.getByRole("button", { name: "隐藏" }));
+  expect(tokenField).toHaveValue("••••••••1234");
+
+  const hotkey = screen.getByLabelText("截图识别快捷键");
+  fireEvent.focus(hotkey);
+  fireEvent.keyDown(hotkey, { key: "F8" });
+  await waitFor(() => expect(hotkey).toHaveValue("F8"));
+  expect(invokeMock).toHaveBeenCalledWith("set_screenshot_hotkey", {
+    shortcut: "F8",
+  });
+
+  invokeMock.mockRejectedValueOnce(new Error("shortcut conflict"));
+  fireEvent.focus(hotkey);
+  fireEvent.keyDown(hotkey, { key: "x", ctrlKey: true });
+  await screen.findByRole("alert");
+  expect(hotkey).toHaveValue("F8");
 });

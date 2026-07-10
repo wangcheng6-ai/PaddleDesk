@@ -8,7 +8,6 @@ const navigation: ReadonlyArray<{ view: View; key: string }> = [
   { view: "home", key: "nav.home" },
   { view: "viewer", key: "nav.viewer" },
   { view: "queue", key: "nav.queue" },
-  { view: "history", key: "nav.history" },
   { view: "usage", key: "nav.usage" },
   { view: "settings", key: "nav.settings" },
 ];

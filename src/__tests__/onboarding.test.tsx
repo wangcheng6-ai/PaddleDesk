@@ -46,7 +46,7 @@ test("opens the official token page and completes only after validation", async 
 
   fireEvent.click(screen.getByRole("button", { name: "开始设置" }));
   fireEvent.click(screen.getByRole("button", { name: "打开 AI Studio" }));
-  expect(openUrlMock).toHaveBeenCalledWith("https://aistudio.baidu.com/paddleocr/task");
+  expect(openUrlMock).toHaveBeenCalledWith("https://aistudio.baidu.com/paddleocr");
 
   fireEvent.change(screen.getByLabelText("Access Token"), {
     target: { value: "test-secret" },

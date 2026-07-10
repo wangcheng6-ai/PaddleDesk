@@ -85,19 +85,9 @@ export function Usage() {
       {failed ? <p role="alert">{t("usage.loadFailed")}</p> : null}
       {!loading && !failed ? (
         <>
-          <section className="usage-rings" aria-label={t("usage.byService")}>
+          <section className="usage-rings" aria-label={t("usage.allServiceSummary")}>
             {services.map((service) => (
-              <UsageRing label={t(service.key)} used={totals[service.id]} key={service.id} />
-            ))}
-          </section>
-          <section className="usage-services">
-            <h2>{t("usage.serviceBreakdown")}</h2>
-            {services.map((service) => (
-              <div className="usage-service" key={service.id}>
-                <span>{t(service.key)}</span>
-                <i style={{ width: `${Math.min(100, (totals[service.id] / 20_000) * 100)}%` }} />
-                <strong>{t("usage.pages", { count: formatNumber(totals[service.id], locale) })}</strong>
-              </div>
+              <UsageRing key={service.id} label={t(service.key)} used={totals[service.id]} />
             ))}
           </section>
           <section className="usage-history">

@@ -1,18 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 
+import { useConfirm } from "../components/ConfirmDialog";
 import { resolveLanguage } from "../i18n";
-import { getSettings, setSettings, validateToken } from "../lib/ipc";
-import { useApp, type ServiceId } from "../stores/app";
+import {
+  deleteToken,
+  getCredentialStatus,
+  getScreenshotHotkey,
+  getSettings,
+  revealToken,
+  setScreenshotHotkey,
+  setSettings,
+  validateToken,
+  type CredentialStatus,
+} from "../lib/ipc";
 
 type SettingsMap = Record<string, string>;
 
 const defaults: SettingsMap = {
   language: "system",
   theme: "system",
-  default_service: "vl16",
   concurrency: "2",
-  privacy_mode: "0",
+  save_history: "1",
   proxy_mode: "system",
   proxy_address: "",
   autostart: "0",
@@ -55,21 +66,35 @@ function Choices({
 
 export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }) {
   const { t, i18n } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
   const [settings, setLocalSettings] = useState(defaults);
   const [token, setToken] = useState("");
+  const [credential, setCredential] = useState<CredentialStatus>({
+    configured: false,
+    last_four: null,
+  });
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const revealTimer = useRef<number | null>(null);
+  const [hotkey, setHotkey] = useState("Ctrl+Alt+S");
+  const [recordingHotkey, setRecordingHotkey] = useState(false);
+  const hotkeyInput = useRef<HTMLInputElement>(null);
   const [tokenStatus, setTokenStatus] = useState<"idle" | "valid" | "invalid" | "failed">("idle");
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const setService = useApp((state) => state.setService);
+  const [updateState, setUpdateState] = useState<
+    "idle" | "checking" | "latest" | "failed" | "installing"
+  >("idle");
+  const [foundUpdate, setFoundUpdate] = useState<Update | null>(null);
 
   useEffect(() => {
     let active = true;
-    void getSettings().then(
-      (values) => {
+    void Promise.all([getSettings(), getCredentialStatus(), getScreenshotHotkey()]).then(
+      ([values, status, shortcut]) => {
         if (!active) return;
         const merged = { ...defaults, ...values };
         setLocalSettings(merged);
-        setService(merged.default_service as ServiceId);
+        setCredential(status);
+        setHotkey(shortcut);
         setLoading(false);
       },
       () => {
@@ -80,8 +105,10 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
     );
     return () => {
       active = false;
+      if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
+      setRevealedToken(null);
     };
-  }, [setService]);
+  }, []);
 
   const update = async (key: string, value: string) => {
     try {
@@ -90,7 +117,6 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
       setFailed(false);
       if (key === "language") await i18n.changeLanguage(resolveLanguage(value));
       if (key === "theme") document.documentElement.dataset.theme = value;
-      if (key === "default_service") setService(value as ServiceId);
     } catch {
       setFailed(true);
     }
@@ -100,14 +126,119 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
     try {
       const valid = await validateToken(token);
       setTokenStatus(valid ? "valid" : "invalid");
-      if (valid) setToken("");
+      if (valid) {
+        setToken("");
+        if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
+        setRevealedToken(null);
+        setCredential(await getCredentialStatus());
+      }
     } catch {
       setTokenStatus("failed");
     }
   };
 
+  const toggleReveal = async () => {
+    if (revealedToken !== null) {
+      if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
+      revealTimer.current = null;
+      setRevealedToken(null);
+      return;
+    }
+    try {
+      const value = await revealToken();
+      setRevealedToken(value);
+      if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
+      revealTimer.current = window.setTimeout(() => {
+        setRevealedToken(null);
+        revealTimer.current = null;
+      }, 30_000);
+    } catch {
+      setTokenStatus("failed");
+    }
+  };
+
+  const copyToken = async () => {
+    try {
+      const value = revealedToken ?? (await revealToken());
+      await navigator.clipboard.writeText(value);
+    } catch {
+      setTokenStatus("failed");
+    }
+  };
+
+  const removeToken = async () => {
+    if (!(await confirm(t("settings.account.confirmDelete")))) return;
+    try {
+      await deleteToken();
+      setCredential({ configured: false, last_four: null });
+      if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
+      setRevealedToken(null);
+      setToken("");
+      setTokenStatus("idle");
+    } catch {
+      setTokenStatus("failed");
+    }
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateState("checking");
+    try {
+      const available = await check();
+      if (available?.version) {
+        setFoundUpdate(available);
+        setUpdateState("idle");
+      } else {
+        void available?.close();
+        setFoundUpdate(null);
+        setUpdateState("latest");
+      }
+    } catch {
+      setFoundUpdate(null);
+      setUpdateState("failed");
+    }
+  };
+
+  const installFoundUpdate = async () => {
+    if (!foundUpdate) return;
+    setUpdateState("installing");
+    try {
+      await foundUpdate.downloadAndInstall();
+      await relaunch();
+    } catch {
+      setUpdateState("failed");
+    }
+  };
+
+  const recordHotkey = async (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!recordingHotkey) return;
+    event.preventDefault();
+    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
+    const modifiers = [
+      event.ctrlKey ? "Ctrl" : null,
+      event.altKey ? "Alt" : null,
+      event.metaKey ? "Win" : null,
+      event.shiftKey ? "Shift" : null,
+    ].filter(Boolean) as string[];
+    const key = event.key.length === 1 ? event.key.toUpperCase() : event.key.toUpperCase();
+    const candidate = [...modifiers, key].join("+");
+    try {
+      const saved = await setScreenshotHotkey(candidate);
+      setHotkey(saved);
+      setLocalSettings((current) => ({
+        ...current,
+        screenshot_hotkey_available: "1",
+      }));
+      setRecordingHotkey(false);
+      setFailed(false);
+    } catch {
+      setRecordingHotkey(false);
+      setFailed(true);
+    }
+  };
+
   return (
     <div className="settings-view">
+      {confirmDialog}
       <h1>{t("viewTitles.settings")}</h1>
       {loading ? <p>{t("common.loading")}</p> : null}
       {failed ? <p role="alert">{t("settings.saveFailed")}</p> : null}
@@ -116,8 +247,36 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
           <section className="settings-card">
             <h2>{t("settings.account.title")}</h2>
             <p>{t("settings.account.cloudDisclosure")}</p>
+            {credential.configured ? (
+              <div className="token-field">
+                <span>{t("settings.account.currentToken")}</span>
+                <div className="token-display">
+                  <input
+                    readOnly
+                    type="text"
+                    value={revealedToken ?? `••••••••${credential.last_four ?? ""}`}
+                    aria-label={t("settings.account.currentToken")}
+                  />
+                  <button type="button" onClick={() => void toggleReveal()}>
+                    {revealedToken !== null ? t("actions.hide") : t("actions.show")}
+                  </button>
+                  <button type="button" onClick={() => void copyToken()}>
+                    {t("actions.copy")}
+                  </button>
+                  <button className="danger-button" type="button" onClick={() => void removeToken()}>
+                    {t("actions.delete")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="credential-status">{t("settings.account.notConfigured")}</p>
+            )}
             <label>
-              <span>{t("settings.account.token")}</span>
+              <span>
+                {credential.configured
+                  ? t("settings.account.replaceToken")
+                  : t("settings.account.token")}
+              </span>
               <input
                 type="password"
                 value={token}
@@ -145,17 +304,6 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
           <section className="settings-card">
             <h2>{t("settings.recognition.title")}</h2>
             <label>
-              <span>{t("settings.recognition.defaultService")}</span>
-              <select
-                value={settings.default_service}
-                onChange={(event) => void update("default_service", event.currentTarget.value)}
-              >
-                <option value="vl16">{t("services.vl16")}</option>
-                <option value="pp_ocr_v6">{t("services.ppOcrV6")}</option>
-                <option value="structure_v3">{t("services.structureV3")}</option>
-              </select>
-            </label>
-            <label>
               <span>{t("settings.recognition.concurrency")}</span>
               <select
                 value={settings.concurrency}
@@ -164,7 +312,50 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
                 {[1, 2, 3, 4].map((value) => <option value={value} key={value}>{value}</option>)}
               </select>
             </label>
-            <p>{t("settings.recognition.hotkey", { hotkey: "Ctrl+Alt+S" })}</p>
+            <p>{t("settings.recognition.concurrencyRestart")}</p>
+            <label>
+              <span>{t("settings.recognition.hotkeyLabel")}</span>
+              <input
+                ref={hotkeyInput}
+                readOnly
+                value={recordingHotkey ? t("settings.recognition.recording") : hotkey}
+                onKeyDown={(event) => void recordHotkey(event)}
+                onFocus={() => setRecordingHotkey(true)}
+                onBlur={() => setRecordingHotkey(false)}
+              />
+            </label>
+            <div className="button-row">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordingHotkey(true);
+                  hotkeyInput.current?.focus();
+                }}
+              >
+                {t("settings.recognition.recordHotkey")}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void setScreenshotHotkey("Ctrl+Alt+S").then(
+                    (saved) => {
+                      setHotkey(saved);
+                      setLocalSettings((current) => ({
+                        ...current,
+                        screenshot_hotkey_available: "1",
+                      }));
+                      setFailed(false);
+                    },
+                    () => setFailed(true),
+                  )
+                }
+              >
+                {t("settings.recognition.restoreHotkey")}
+              </button>
+            </div>
+            {settings.screenshot_hotkey_available === "0" ? (
+              <p role="alert">{t("settings.recognition.hotkeyUnavailable")}</p>
+            ) : null}
           </section>
 
           <section className="settings-card">
@@ -172,10 +363,10 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
             <label className="toggle-field">
               <input
                 type="checkbox"
-                checked={settings.privacy_mode === "1"}
-                onChange={(event) => void update("privacy_mode", event.currentTarget.checked ? "1" : "0")}
+                checked={settings.save_history === "1"}
+                onChange={(event) => void update("save_history", event.currentTarget.checked ? "1" : "0")}
               />
-              <span>{t("settings.privacy.privacyMode")}</span>
+              <span>{t("settings.privacy.saveHistory")}</span>
             </label>
             <p>{t("settings.privacy.privacyHint")}</p>
             <Choices
@@ -231,6 +422,39 @@ export function Settings({ onOpenOnboarding }: { onOpenOnboarding?: () => void }
               />
               <span>{t("settings.appearance.autostart")}</span>
             </label>
+          </section>
+
+          <section className="settings-card">
+            <h2>{t("settings.about.title")}</h2>
+            <p>{t("settings.about.updateHint")}</p>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={updateState === "checking" || updateState === "installing"}
+                onClick={() => void checkForUpdates()}
+              >
+                {updateState === "checking"
+                  ? t("settings.about.checking")
+                  : t("settings.about.checkUpdates")}
+              </button>
+              {foundUpdate ? (
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={updateState === "installing"}
+                  onClick={() => void installFoundUpdate()}
+                >
+                  {updateState === "installing"
+                    ? t("update.installing")
+                    : t("settings.about.installFound", { version: foundUpdate.version })}
+                </button>
+              ) : null}
+            </div>
+            {updateState === "latest" ? <p role="status">{t("settings.about.latest")}</p> : null}
+            {updateState === "failed" ? (
+              <p role="alert">{t("settings.about.checkFailed")}</p>
+            ) : null}
           </section>
         </div>
       ) : null}

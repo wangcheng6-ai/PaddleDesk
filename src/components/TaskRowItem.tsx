@@ -23,6 +23,7 @@ interface TaskRowItemProps {
   onOpen?: () => void;
   onRetry?: () => void;
   onCancel?: () => void;
+  onDismiss?: () => void;
 }
 
 const fileName = (path = "") => path.split(/[\\/]/).pop() || path;
@@ -32,6 +33,7 @@ export function TaskRowItem({
   onOpen,
   onRetry,
   onCancel,
+  onDismiss,
 }: TaskRowItemProps) {
   const { t } = useTranslation();
   const status = task.status ?? "pending";
@@ -59,7 +61,7 @@ export function TaskRowItem({
         <button
           className="task-main task-open"
           type="button"
-          onDoubleClick={onOpen}
+          onClick={onOpen}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -118,6 +120,11 @@ export function TaskRowItem({
         {onCancel && !["done", "canceled", "failed"].includes(status) && (
           <button type="button" onClick={onCancel}>
             {t("actions.cancel")}
+          </button>
+        )}
+        {onDismiss && status === "failed" && (
+          <button type="button" onClick={onDismiss}>
+            {t("actions.dismiss")}
           </button>
         )}
       </span>

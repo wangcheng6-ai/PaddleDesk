@@ -6,7 +6,7 @@
   "nav": {
     "label": "主导航",
     "home": "主页",
-    "viewer": "结果查看器",
+    "viewer": "识别结果",
     "queue": "任务队列",
     "history": "历史记录",
     "usage": "用量",
@@ -16,7 +16,8 @@
     "selectorLabel": "识别服务",
     "vl16": "PaddleOCR-VL-1.6",
     "ppOcrV6": "PP-OCRv6",
-    "structureV3": "PP-StructureV3"
+    "structureV3": "PP-StructureV3",
+    "badges": "{{active}} 个进行中，{{failed}} 个失败"
   },
   "usage": {
     "today": "今日用量",
@@ -26,16 +27,25 @@
     "serviceBreakdown": "分服务明细",
     "lastSevenDays": "近 7 日",
     "pages": "{{count}} 页",
-    "loadFailed": "无法加载用量数据。"
+    "loadFailed": "无法加载用量数据。",
+    "allServiceSummary": "三个服务额度摘要"
   },
   "actions": {
     "retry": "重试",
     "cancel": "取消",
+    "confirm": "确定",
     "chooseFiles": "选择文件",
     "capture": "截图识别",
-    "captureHint": "截图识别（Ctrl+Alt+S）",
+    "captureHint": "使用当前服务截图识别",
     "dismiss": "关闭",
-    "back": "返回"
+    "back": "返回",
+    "viewResult": "查看结果",
+    "copy": "复制",
+    "delete": "删除",
+    "expand": "展开",
+    "collapse": "收起",
+    "show": "显示",
+    "hide": "隐藏"
   },
   "common": {
     "loading": "正在加载…"
@@ -51,7 +61,7 @@
     "selectService": "选择服务",
     "serviceHelp": "按任务类型选择官方云端模型",
     "recent": "最近任务",
-    "recentHint": "双击打开结果",
+    "recentHint": "单击查看任务或结果",
     "loadFailed": "无法加载最近任务。",
     "empty": "还没有任务。选择或拖入文件即可开始。",
     "serviceCards": {
@@ -73,6 +83,7 @@
     }
   },
   "queue": {
+    "batchProgress": "批量任务 {{done}} / {{total}}",
     "summary": "{{active}} 个进行中 · {{failed}} 个失败",
     "loadFailed": "无法加载任务队列。",
     "actionFailed": "操作失败，请重试。",
@@ -94,9 +105,17 @@
     "noResult": "该任务还没有可查看的结果。",
     "loadFailed": "无法加载识别结果。",
     "exportFailed": "导出失败，请重试。",
+    "resultList": "当前服务识别结果",
+    "sessionOnly": "仅本次会话",
+    "sourceUnavailable": "原文件不可用，识别内容仍可查看和导出。",
+    "missingMarkdownImage": "结果引用的图片未随服务返回：{{alt}}",
+    "confirmDelete": "确定删除这条识别结果吗？真实调用用量不会减少。",
+    "confirmClear": "确定清空当前服务的全部识别结果吗？真实调用用量不会减少。",
+    "clearResults": "清空当前服务结果",
     "copyLatex": "复制 LaTeX",
     "tabs": {
-      "markdown": "Markdown",
+      "preview": "预览",
+      "source": "Markdown 源码",
       "json": "JSON",
       "text": "纯文本"
     },
@@ -165,10 +184,14 @@
     }
   },
   "runtime": {
+    "batchCompleted": "本批 {{count}} 个任务已处理完成",
+    "openCompletedFailed": "无法切换到该任务所属服务，请重试。",
     "queueEventsUnavailable": "无法接收任务更新。",
     "connectingQueueEvents": "正在连接任务更新…",
     "clipboardImageUnavailable": "剪贴板中没有可识别的图片。",
-    "captureFailed": "无法启动截图识别。"
+    "captureFailed": "无法启动截图识别。",
+    "taskCompleted": "识别任务已完成。",
+    "serviceSwitchFailed": "服务切换未保存，仍使用原服务。"
   },
   "onboarding": {
     "progress": "首启设置，第 {{step}} 步，共 2 步",
@@ -184,7 +207,7 @@
     "token": {
       "title": "连接 PaddleOCR 服务",
       "subtitle": "获取免费的 AI Studio Access Token，然后立即验证。",
-      "step1": "打开官方 PaddleOCR 任务页并登录百度 AI Studio。",
+      "step1": "打开官方 PaddleOCR 页面并登录百度 AI Studio，页面会展示如何创建 API。",
       "step2": "按页面提示创建或复制 Access Token。",
       "step3": "粘贴到下方；验证成功后即可开始识别。",
       "openStudio": "打开 AI Studio",
@@ -205,7 +228,7 @@
   },
   "viewTitles": {
     "home": "主页",
-    "viewer": "结果查看器",
+    "viewer": "识别结果",
     "queue": "任务队列",
     "history": "历史记录",
     "usage": "用量",
@@ -222,6 +245,15 @@
   },
   "settings": {
     "saveFailed": "设置未能保存，请重试。",
+    "about": {
+      "title": "关于",
+      "updateHint": "应用启动时会自动检查更新，也可以在这里手动检查。",
+      "checkUpdates": "检查更新",
+      "checking": "正在检查…",
+      "latest": "当前已是最新版本。",
+      "checkFailed": "检查更新失败，请检查网络后重试。",
+      "installFound": "更新到 {{version}}"
+    },
     "account": {
       "title": "AI Studio 账户",
       "cloudDisclosure": "文档会上传至百度云端识别；Token 仅保存在 Windows 凭据管理器中。",
@@ -231,18 +263,29 @@
       "valid": "Token 已验证并安全保存。",
       "invalid": "Token 无效。",
       "failed": "Token 验证失败，请检查网络后重试。",
-      "openOnboarding": "重新打开首启向导"
+      "openOnboarding": "重新打开首启向导",
+      "currentToken": "当前 Token",
+      "notConfigured": "尚未配置 Access Token",
+      "replaceToken": "更换 Access Token",
+      "confirmDelete": "确定删除已保存的 Access Token 吗？"
     },
     "recognition": {
       "title": "识别",
       "defaultService": "默认服务",
       "concurrency": "并发任务数",
-      "hotkey": "截图识别快捷键：{{hotkey}}"
+      "concurrencyRestart": "修改并发任务数后，重启应用生效。",
+      "hotkey": "截图识别快捷键：{{hotkey}}",
+      "hotkeyLabel": "截图识别快捷键",
+      "recording": "请按下新的快捷键…",
+      "recordHotkey": "录制快捷键",
+      "restoreHotkey": "恢复 Ctrl+Alt+S",
+      "hotkeyUnavailable": "快捷键注册失败，应用仍可使用；请录制其它组合。"
     },
     "privacy": {
       "title": "隐私与网络",
       "privacyMode": "隐私模式",
-      "privacyHint": "开启后只统计页数，不在本机保存识别结果与可搜索历史。",
+      "saveHistory": "保存识别结果",
+      "privacyHint": "关闭后，新结果仅在本次会话可查看和导出；退出应用后清理。已有结果不会删除。",
       "proxyMode": "代理模式",
       "proxyAddress": "自定义代理地址",
       "proxyAddressPlaceholder": "例如 http://127.0.0.1:7890"

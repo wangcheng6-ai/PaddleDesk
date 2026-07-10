@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { setSettings, validateToken } from "../lib/ipc";
 
-const TOKEN_URL = "https://aistudio.baidu.com/paddleocr/task";
+const TOKEN_URL = "https://aistudio.baidu.com/paddleocr";
 
 interface OnboardingProps {
   open: boolean;

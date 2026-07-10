@@ -17,19 +17,29 @@ const failed: TaskSummary = {
   error_kind: "nEtWoRk",
   error_msg: "upstream socket timeout",
   created_at: 2,
+  batch_id: "batch-1",
 };
 const processing: TaskSummary = {
   id: "processing",
-  service: "pp_ocr_v6",
+  service: "vl16",
   status: "processing",
   input_path: "C:/docs/processing.png",
   progress_page: 2,
   total_pages: 4,
   created_at: 1,
+  batch_id: "batch-1",
+};
+const completedBatchTask: TaskSummary = {
+  id: "batch-done",
+  service: "vl16",
+  status: "done",
+  input_path: "C:/docs/done.png",
+  created_at: 3,
+  batch_id: "batch-1",
 };
 const zeroTotal: TaskSummary = {
   id: "zero-total",
-  service: "structure_v3",
+  service: "vl16",
   status: "processing",
   input_path: "C:/docs/zero-total.pdf",
   progress_page: 0,
@@ -40,8 +50,14 @@ const zeroTotal: TaskSummary = {
 beforeEach(async () => {
   invokeMock.mockReset().mockImplementation(async (command) => {
     if (command === "get_settings") return { language: "zh-CN" };
-    if (command === "list_tasks") return [failed, processing, zeroTotal];
-    if (command === "retry_task" || command === "cancel_task") return null;
+    if (command === "list_tasks") {
+      return [failed, processing, zeroTotal, completedBatchTask];
+    }
+    if (
+      command === "retry_task" ||
+      command === "cancel_task" ||
+      command === "dismiss_failed_task"
+    ) return null;
     throw new Error(`unexpected command: ${command}`);
   });
   useApp.setState({
@@ -59,6 +75,11 @@ test("localizes failed tasks, isolates raw detail, and wires retry and cancel", 
   render(<Queue />);
 
   const list = await screen.findByRole("list", { name: "任务队列" });
+  expect(screen.getByText("批量任务 2 / 3")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar", { name: "" })).toHaveAttribute(
+    "max",
+    "3",
+  );
   const failedRow = within(list)
     .getByText("failed.pdf")
     .closest<HTMLElement>('[role="listitem"]');
@@ -88,9 +109,7 @@ test("localizes failed tasks, isolates raw detail, and wires retry and cancel", 
   expect(useApp.getState().tasks.find(({ id }) => id === "failed")?.status).toBe(
     "failed",
   );
-  expect(
-    useApp.getState().tasks.find(({ id }) => id === "processing")?.status,
-  ).toBe("processing");
+  expect(useApp.getState().tasks.find(({ id }) => id === "processing")).toBeUndefined();
   const zeroRow = within(list)
     .getByText("zero-total.pdf")
     .closest<HTMLElement>('[role="listitem"]');

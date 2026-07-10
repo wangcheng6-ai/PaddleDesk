@@ -26,11 +26,25 @@ export interface RecognitionResult {
   pages: RecognitionPage[];
 }
 
-export interface HistoryRow {
+export interface ResultSummary {
   task_id: string;
+  service: ServiceId;
   file_name: string;
   snippet: string;
   created_at: number;
+  temporary: boolean;
+}
+
+export type HistoryRow = ResultSummary;
+
+export interface CreatedBatch {
+  batch_id: string;
+  task_ids: string[];
+}
+
+export interface CredentialStatus {
+  configured: boolean;
+  last_four: string | null;
 }
 
 export interface UsageRow {
@@ -48,6 +62,10 @@ interface ProgressPayload {
 
 interface IdPayload {
   id: string;
+}
+
+interface SubmittedPayload {
+  task: TaskSummary;
 }
 
 interface UsageUpdatedPayload {
@@ -79,8 +97,21 @@ export const setSettings = (map: Record<string, string>) =>
 export const validateToken = (token: string) =>
   invoke<boolean>("validate_token", { token });
 
+export const getCredentialStatus = () =>
+  invoke<CredentialStatus>("get_credential_status");
+
+export const revealToken = () => invoke<string>("reveal_token");
+
+export const deleteToken = () => invoke<void>("delete_token");
+
+export const getScreenshotHotkey = () =>
+  invoke<string>("get_screenshot_hotkey");
+
+export const setScreenshotHotkey = (shortcut: string) =>
+  invoke<string>("set_screenshot_hotkey", { shortcut });
+
 export const createTasks = (paths: string[], service: ServiceId) =>
-  invoke<string[]>("create_tasks", {
+  invoke<CreatedBatch>("create_tasks", {
     paths,
     service,
     options: { lang: null },
@@ -97,6 +128,18 @@ export const listTasks = (status: string | null) =>
 export const searchHistory = (query: string) =>
   invoke<HistoryRow[]>("search_history", { query });
 
+export const listResults = (service: ServiceId, query = "") =>
+  invoke<ResultSummary[]>("list_results", { service, query });
+
+export const deleteResult = (taskId: string) =>
+  invoke<void>("delete_result", { taskId });
+
+export const clearResults = (service: ServiceId) =>
+  invoke<void>("clear_results", { service });
+
+export const dismissFailedTask = (taskId: string) =>
+  invoke<void>("dismiss_failed_task", { taskId });
+
 export const getUsage = (days: number) =>
   invoke<UsageRow[]>("get_usage", { days });
 
@@ -109,7 +152,7 @@ export const getResult = (taskId: string) =>
   invoke<RecognitionResult | null>("get_result", { taskId });
 
 export const getTaskSource = (taskId: string) =>
-  invoke<number[]>("get_task_source", { taskId });
+  invoke<ArrayBuffer>("get_task_source", { taskId });
 
 export const exportResult = (
   taskId: string,
@@ -130,6 +173,11 @@ export async function onQueueEvent(
   const unlisteners: UnlistenFn[] = [];
 
   try {
+    unlisteners.push(
+      await listen<SubmittedPayload>("task:submitted", ({ payload }) =>
+        callback(payload.task),
+      ),
+    );
     unlisteners.push(
       await listen<ProgressPayload>("task:progress", ({ payload }) =>
         callback({

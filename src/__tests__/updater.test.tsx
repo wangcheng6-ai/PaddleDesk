@@ -15,6 +15,14 @@ vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
 
 import { UpdatePrompt } from "../components/UpdatePrompt";
 import { initI18n } from "../i18n";
+import { Settings } from "../views/Settings";
+
+const settingsCommands = async (command: string) => {
+  if (command === "get_settings") return { language: "zh-CN" };
+  if (command === "get_credential_status") return { configured: false, last_four: null };
+  if (command === "get_screenshot_hotkey") return "Ctrl+Alt+S";
+  throw new Error(`unexpected command: ${command}`);
+};
 
 beforeEach(async () => {
   invokeMock.mockReset().mockResolvedValue({ language: "zh-CN" });
@@ -46,4 +54,28 @@ test("installs the update then relaunches the app", async () => {
 
   await waitFor(() => expect(downloadAndInstallMock).toHaveBeenCalledOnce());
   expect(relaunchMock).toHaveBeenCalledOnce();
+});
+
+test("settings can check for updates manually and install the found version", async () => {
+  invokeMock.mockImplementation(settingsCommands);
+  render(<Settings />);
+  await screen.findByRole("heading", { name: "设置" });
+
+  fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+  fireEvent.click(await screen.findByRole("button", { name: "更新到 0.2.0" }));
+
+  await waitFor(() => expect(downloadAndInstallMock).toHaveBeenCalledOnce());
+  expect(relaunchMock).toHaveBeenCalledOnce();
+});
+
+test("settings reports when the app is already up to date", async () => {
+  invokeMock.mockImplementation(settingsCommands);
+  checkMock.mockResolvedValue(null);
+  render(<Settings />);
+  await screen.findByRole("heading", { name: "设置" });
+
+  fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("当前已是最新版本。");
+  expect(screen.queryByRole("button", { name: /更新到/ })).toBeNull();
 });

@@ -8,18 +8,18 @@ import "katex/dist/katex.min.css";
 
 import type { ExportFormat, RecognitionResult } from "../lib/ipc";
 
-type ResultTab = "markdown" | "json" | "text";
+type ResultTab = "preview" | "source" | "json" | "text";
 
 interface ResultPaneProps {
   result: RecognitionResult;
   onExport: (format: ExportFormat, blockId?: string) => Promise<void>;
 }
 
-const tabs: ResultTab[] = ["markdown", "json", "text"];
+const tabs: ResultTab[] = ["preview", "source", "json", "text"];
 
 export function ResultPane({ result, onExport }: ResultPaneProps) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<ResultTab>("markdown");
+  const [tab, setTab] = useState<ResultTab>("preview");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -27,7 +27,6 @@ export function ResultPane({ result, onExport }: ResultPaneProps) {
     () =>
       result.pages
         .flatMap((page) => page.blocks)
-        .filter((block) => block.kind === "text")
         .map((block) => block.content)
         .join("\n\n"),
     [result],
@@ -71,19 +70,32 @@ export function ResultPane({ result, onExport }: ResultPaneProps) {
       </div>
 
       <div className="result-content">
-        {tab === "markdown" ? (
+        {tab === "preview" ? (
           <div className="markdown-content">
-            <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            <Markdown
+              skipHtml
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                img: ({ alt }) => (
+                  <span className="missing-markdown-image">
+                    {t("viewer.missingMarkdownImage", { alt: alt || "" })}
+                  </span>
+                ),
+              }}
+            >
               {result.markdown}
             </Markdown>
           </div>
+        ) : tab === "source" ? (
+          <pre>{result.markdown}</pre>
         ) : tab === "json" ? (
           <pre>{JSON.stringify(result, null, 2)}</pre>
         ) : (
           <pre>{plainText}</pre>
         )}
 
-        {tab === "markdown" && actionable.length > 0 ? (
+        {tab === "preview" && actionable.length > 0 ? (
           <div className="block-actions">
             {actionable.map((block) => (
               <article className={`result-block result-block-${block.kind}`} key={block.id}>

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Open-source Windows desktop client for the official PaddleOCR cloud API (Baidu AI Studio)"
 authors = ["PaddleDesk contributors"]
 license = "MIT"
-repository = "https://github.com/wangcheng6-ai/PaddleDesk"
+repository = "https://github.com/chengbuilds/PaddleDesk"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

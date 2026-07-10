@@ -8,9 +8,9 @@
 
 复杂文档 · 结构化结果 · 轻量桌面体验
 
-[![CI](https://github.com/wangcheng6-ai/PaddleDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/wangcheng6-ai/PaddleDesk/actions/workflows/ci.yml)
+[![CI](https://github.com/chengbuilds/PaddleDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/chengbuilds/PaddleDesk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/wangcheng6-ai/PaddleDesk?include_prereleases)](https://github.com/wangcheng6-ai/PaddleDesk/releases)
+[![Release](https://img.shields.io/github/v/release/chengbuilds/PaddleDesk?include_prereleases)](https://github.com/chengbuilds/PaddleDesk/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-informational)
 ![Stack](https://img.shields.io/badge/Tauri%202-Rust%20%2B%20React-orange)
 
@@ -66,7 +66,7 @@ PaddleDesk 接入百度 AI Studio 的三个 PaddleOCR 官方云服务，把复�
 
 ## 安装
 
-前往 [Releases](https://github.com/wangcheng6-ai/PaddleDesk/releases) 下载最新版本：
+前往 [Releases](https://github.com/chengbuilds/PaddleDesk/releases) 下载最新版本：
 
 | 文件 | 说明 |
 | --- | --- |
@@ -157,8 +157,8 @@ Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWOR
 
 欢迎任何形式的贡献：
 
-- 提交 [Issue](https://github.com/wangcheng6-ai/PaddleDesk/issues) 报告 Bug 或提出功能建议
-- 提交 [Pull Request](https://github.com/wangcheng6-ai/PaddleDesk/pulls) 改进代码或文档，提交信息请遵循 Conventional Commits（`feat:` / `fix:` / `docs:` …）
+- 提交 [Issue](https://github.com/chengbuilds/PaddleDesk/issues) 报告 Bug 或提出功能建议
+- 提交 [Pull Request](https://github.com/chengbuilds/PaddleDesk/pulls) 改进代码或文档，提交信息请遵循 Conventional Commits（`feat:` / `fix:` / `docs:` …）
 - 提交前请确认 `pnpm test` 与 `cd src-tauri && cargo test` 全部通过
 
 本项目由 [Claude Code](https://github.com/anthropics/claude-code) 协助开发。

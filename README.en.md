@@ -8,9 +8,9 @@
 
 Complex documents · Structured results · Lightweight desktop experience
 
-[![CI](https://github.com/wangcheng6-ai/PaddleDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/wangcheng6-ai/PaddleDesk/actions/workflows/ci.yml)
+[![CI](https://github.com/chengbuilds/PaddleDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/chengbuilds/PaddleDesk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/wangcheng6-ai/PaddleDesk?include_prereleases)](https://github.com/wangcheng6-ai/PaddleDesk/releases)
+[![Release](https://img.shields.io/github/v/release/chengbuilds/PaddleDesk?include_prereleases)](https://github.com/chengbuilds/PaddleDesk/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-informational)
 ![Stack](https://img.shields.io/badge/Tauri%202-Rust%20%2B%20React-orange)
 
@@ -66,7 +66,7 @@ Each service has its own quota (see the [official AI Studio page](https://aistud
 
 ## Install
 
-Download the latest version from [Releases](https://github.com/wangcheng6-ai/PaddleDesk/releases):
+Download the latest version from [Releases](https://github.com/chengbuilds/PaddleDesk/releases):
 
 | File | Description |
 | --- | --- |
@@ -157,8 +157,8 @@ Never commit the private key. Public updates also require a signed installer, `.
 
 Contributions of any kind are welcome:
 
-- Open an [Issue](https://github.com/wangcheng6-ai/PaddleDesk/issues) to report bugs or suggest features
-- Submit a [Pull Request](https://github.com/wangcheng6-ai/PaddleDesk/pulls) for code or docs — please follow Conventional Commits (`feat:` / `fix:` / `docs:` …)
+- Open an [Issue](https://github.com/chengbuilds/PaddleDesk/issues) to report bugs or suggest features
+- Submit a [Pull Request](https://github.com/chengbuilds/PaddleDesk/pulls) for code or docs — please follow Conventional Commits (`feat:` / `fix:` / `docs:` …)
 - Make sure `pnpm test` and `cd src-tauri && cargo test` pass before submitting
 
 This project is developed with the assistance of [Claude Code](https://github.com/anthropics/claude-code).

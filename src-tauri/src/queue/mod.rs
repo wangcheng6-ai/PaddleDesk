@@ -60,6 +60,10 @@ pub struct Queue {
     submit_probe: Mutex<Option<TestProbe>>,
     #[cfg(test)]
     terminal_probe: Mutex<Option<TestProbe>>,
+    #[cfg(test)]
+    cancel_probe: Mutex<Option<TestProbe>>,
+    #[cfg(test)]
+    retry_probe: Mutex<Option<TestProbe>>,
 }
 
 impl Queue {
@@ -87,12 +91,21 @@ impl Queue {
             submit_probe: Mutex::new(None),
             #[cfg(test)]
             terminal_probe: Mutex::new(None),
+            #[cfg(test)]
+            cancel_probe: Mutex::new(None),
+            #[cfg(test)]
+            retry_probe: Mutex::new(None),
         })
     }
 
     pub fn submit(self: &Arc<Self>, task: NewTask) {
         #[cfg(test)]
-        hit_probe(&self.submit_probe);
+        if matches!(
+            self.store.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ) {
+            hit_probe(&self.submit_probe);
+        }
         let persist_result = {
             let store = match self.lock_store() {
                 Ok(store) => store,
@@ -144,6 +157,20 @@ impl Queue {
     }
 
     pub fn cancel(&self, id: &str) {
+        #[cfg(test)]
+        if matches!(
+            self.active.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ) {
+            hit_probe(&self.cancel_probe);
+        }
+        let _active = match self.active.lock() {
+            Ok(active) => active,
+            Err(_) => {
+                self.emit_failed(id, storage_error("queue state lock poisoned"));
+                return;
+            }
+        };
         let error = match self.lock_store() {
             Ok(store) => match store.cancel_task(id) {
                 Ok(true) => {
@@ -159,6 +186,13 @@ impl Queue {
     }
 
     pub fn retry(self: &Arc<Self>, id: &str) -> Result<(), OcrError> {
+        #[cfg(test)]
+        if matches!(
+            self.active.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ) {
+            hit_probe(&self.retry_probe);
+        }
         let task = {
             let mut active = self
                 .active
@@ -211,10 +245,7 @@ impl Queue {
 
     async fn run(self: Arc<Self>, task: AdmittedTask) {
         let terminal = self.work(&task).await;
-        let terminal = self.finalize(&task.task.id, terminal);
-        if let Some(event) = terminal {
-            self.emit(event);
-        }
+        self.finalize(&task.task.id, terminal);
     }
 
     async fn work(&self, task: &AdmittedTask) -> Option<QueueEvent> {
@@ -348,14 +379,12 @@ impl Queue {
         })
     }
 
-    fn finalize(&self, task_id: &str, terminal: Option<QueueEvent>) -> Option<QueueEvent> {
+    fn finalize(&self, task_id: &str, terminal: Option<QueueEvent>) {
         let mut active = match self.active.lock() {
             Ok(active) => active,
             Err(_) => {
-                return Some(QueueEvent::Failed {
-                    id: task_id.into(),
-                    error: storage_error("queue state lock poisoned"),
-                })
+                self.emit_failed(task_id, storage_error("queue state lock poisoned"));
+                return;
             }
         };
         let terminal = match terminal {
@@ -376,7 +405,9 @@ impl Queue {
         #[cfg(test)]
         hit_probe(&self.terminal_probe);
         active.remove(task_id);
-        terminal
+        if let Some(event) = terminal {
+            self.emit(event);
+        }
     }
 
     fn emit(&self, event: QueueEvent) {

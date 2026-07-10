@@ -515,17 +515,19 @@ async fn failed_event_is_published_only_after_immediate_retry_is_safe() {
     *queue.event_probe.lock().unwrap() = Some((entered_tx, release_event.clone()));
     release_first.notify_one();
     entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
-    let was_active_before_publish = queue.active.lock().unwrap().contains("retry-now");
+    let active_locked_during_publish =
+        matches!(queue.active.try_lock(), Err(TryLockError::WouldBlock));
     release_event.wait();
 
     assert!(
-        !was_active_before_publish,
-        "Failed was published before active cleanup"
+        active_locked_during_publish,
+        "active mutex was released before Failed publication"
     );
     assert!(matches!(
         terminal(&mut events).await,
         QueueEvent::Failed { id, .. } if id == "retry-now"
     ));
+    assert!(!queue.active.lock().unwrap().contains("retry-now"));
     queue.retry("retry-now").unwrap();
     assert!(matches!(
         terminal(&mut events).await,
@@ -551,13 +553,13 @@ async fn retry_from_failed_poll_window_always_starts_a_worker() {
         store.lock().unwrap().list_tasks(Some("failed")).unwrap()[0].id,
         "retry-from-poll"
     );
-    let (retry_started_tx, retry_started_rx) = std::sync::mpsc::sync_channel(0);
+    let (retry_waiting_tx, retry_waiting_rx) = std::sync::mpsc::sync_channel(0);
+    let retry_release = Arc::new(Barrier::new(2));
+    *queue.retry_probe.lock().unwrap() = Some((retry_waiting_tx, retry_release.clone()));
     let retry_queue = queue.clone();
-    let retry = tokio::spawn(async move {
-        retry_started_tx.send(()).unwrap();
-        retry_queue.retry("retry-from-poll")
-    });
-    retry_started_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    let retry = tokio::spawn(async move { retry_queue.retry("retry-from-poll") });
+    retry_waiting_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    retry_release.wait();
     release.wait();
     retry.await.unwrap().unwrap();
 
@@ -577,6 +579,40 @@ async fn retry_from_failed_poll_window_always_starts_a_worker() {
         store.lock().unwrap().list_tasks(Some("done")).unwrap()[0].id,
         "retry-from-poll"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn canceled_is_last_when_cancel_races_persisted_failure() {
+    let (queue, store, mut events) = setup(MockOcr::failing(1, OcrError::Auth), 1).await;
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(0);
+    let release = Arc::new(Barrier::new(2));
+    *queue.terminal_probe.lock().unwrap() = Some((entered_tx, release.clone()));
+    queue.submit(NewTask {
+        id: "cancel-failed".into(),
+        service: ServiceId::Vl16,
+        input_path: "failed.png".into(),
+        options_json: "{}".into(),
+    });
+    entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    let failed = store.lock().unwrap().list_tasks(Some("failed")).unwrap();
+    assert_eq!(failed.len(), 1);
+    let (cancel_waiting_tx, cancel_waiting_rx) = std::sync::mpsc::sync_channel(0);
+    let cancel_release = Arc::new(Barrier::new(2));
+    *queue.cancel_probe.lock().unwrap() = Some((cancel_waiting_tx, cancel_release.clone()));
+    let cancel_queue = queue.clone();
+    let cancel = std::thread::spawn(move || cancel_queue.cancel("cancel-failed"));
+    cancel_waiting_rx.recv_timeout(TEST_TIMEOUT).unwrap();
+    cancel_release.wait();
+    release.wait();
+    cancel.join().unwrap();
+    let observed = [terminal(&mut events).await, terminal(&mut events).await];
+    assert!(matches!(
+        observed,
+        [QueueEvent::Failed { .. }, QueueEvent::Canceled { .. }]
+    ));
+    assert!(events.try_recv().is_err());
+    let canceled = store.lock().unwrap().list_tasks(Some("canceled")).unwrap();
+    assert_eq!(canceled.len(), 1);
 }
 
 #[tokio::test]

@@ -429,7 +429,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = capture::cleanup_stale(app.handle(), &retained_paths) {
         eprintln!("PaddleDesk capture cleanup: {error}");
     }
-    let token: api::paddle::TokenProvider = Arc::new(api::credentials::load_token);
+    let token: api::paddle::TokenProvider = Arc::new(api::token_store::load_token);
     let proxy = proxy_provider(store.clone());
     let (event_sender, event_receiver) = mpsc::unbounded_channel();
     let queue = queue::Queue::new(

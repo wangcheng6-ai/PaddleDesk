@@ -11,9 +11,8 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 use crate::{
     api::{
-        credentials,
         paddle::{PaddleOcr, BASE_URL},
-        ParseOptions,
+        token_store, ParseOptions,
     },
     capture, export,
     model::{OcrError, ServiceId},
@@ -124,7 +123,7 @@ fn is_secret_setting_key(key: &str) -> bool {
 }
 
 fn ensure_token_configured() -> Result<(), String> {
-    credentials::load_token()
+    token_store::load_token()
         .map_err(|error| error.to_string())
         .and_then(|token| {
             if token.trim().is_empty() {
@@ -572,14 +571,14 @@ pub async fn validate_token(token: String, state: State<'_, AppState>) -> Result
     validate_token_with(
         &token,
         PaddleOcr::probe_token(BASE_URL, &token, proxy),
-        |token| credentials::save_token(token).map_err(|error| error.to_string()),
+        |token| token_store::save_token(token).map_err(|error| error.to_string()),
     )
     .await
 }
 
 #[tauri::command]
 pub fn get_credential_status() -> Result<CredentialStatus, String> {
-    match credentials::load_token() {
+    match token_store::load_token() {
         Ok(token) if !token.trim().is_empty() => Ok(CredentialStatus {
             configured: true,
             last_four: Some(
@@ -603,12 +602,12 @@ pub fn get_credential_status() -> Result<CredentialStatus, String> {
 
 #[tauri::command]
 pub fn reveal_token() -> Result<String, String> {
-    credentials::load_token().map_err(|error| error.to_string())
+    token_store::load_token().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn delete_token() -> Result<(), String> {
-    match credentials::delete_token() {
+    match token_store::delete_token() {
         Ok(()) | Err(OcrError::Auth) => Ok(()),
         Err(error) => Err(error.to_string()),
     }

@@ -1,8 +1,8 @@
-pub mod credentials;
 #[cfg(test)]
 pub mod mock;
 pub mod normalize;
 pub mod paddle;
+pub mod token_store;
 
 use std::{
     path::PathBuf,

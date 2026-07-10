@@ -68,6 +68,18 @@ async fn setup_service(
     Arc<Mutex<Store>>,
     mpsc::UnboundedReceiver<QueueEvent>,
 ) {
+    setup_service_with_persistence(svc, conc, true).await
+}
+
+async fn setup_service_with_persistence(
+    svc: Arc<dyn OcrService>,
+    conc: usize,
+    persist_results: bool,
+) -> (
+    Arc<Queue>,
+    Arc<Mutex<Store>>,
+    mpsc::UnboundedReceiver<QueueEvent>,
+) {
     let d = tempfile::tempdir().unwrap();
     let store = Arc::new(Mutex::new(Store::open(&d.path().join("t.db")).unwrap()));
     std::mem::forget(d);
@@ -75,7 +87,14 @@ async fn setup_service(
     let mut m: HashMap<ServiceId, Arc<dyn OcrService>> = HashMap::new();
     m.insert(ServiceId::Vl16, svc);
     (
-        Queue::new(store.clone(), m, conc, tx, Duration::from_millis(1)),
+        Queue::new(
+            store.clone(),
+            m,
+            conc,
+            tx,
+            Duration::from_millis(1),
+            persist_results,
+        ),
         store,
         rx,
     )
@@ -257,6 +276,43 @@ async fn progress_success_result_and_usage_stay_in_sync() {
 }
 
 #[tokio::test]
+async fn disabled_result_persistence_keeps_lifecycle_without_history() {
+    let (queue, store, mut events) =
+        setup_service_with_persistence(Arc::new(MockOcr::new()), 1, false).await;
+    queue.submit(NewTask {
+        id: "private".into(),
+        service: ServiceId::Vl16,
+        input_path: "sensitive.png".into(),
+        options_json: "{}".into(),
+    });
+
+    let (uploading, processing) = timeout(TEST_TIMEOUT, async {
+        let (mut uploading, mut processing) = (false, false);
+        loop {
+            match events.recv().await.expect("queue event channel closed") {
+                QueueEvent::Progress { stage, .. } if stage == "uploading" => uploading = true,
+                QueueEvent::Progress { stage, .. } if stage == "processing" => processing = true,
+                QueueEvent::Done { id } => {
+                    assert_eq!(id, "private");
+                    return (uploading, processing);
+                }
+                QueueEvent::Progress { .. } => {}
+                _ => panic!("private task should succeed"),
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for private task");
+
+    assert!(uploading && processing);
+    let store = store.lock().unwrap();
+    assert_eq!(store.list_tasks(Some("done")).unwrap().len(), 1);
+    assert!(store.get_result("private").unwrap().is_none());
+    assert!(store.search_history("Mock").unwrap().is_empty());
+    assert_eq!(store.usage_since(1).unwrap()[0].pages, 1);
+}
+
+#[tokio::test]
 async fn auth_error_fails_immediately_no_retry() {
     let svc = MockOcr::failing(99, OcrError::Auth);
     let probe = svc.clone();
@@ -296,6 +352,38 @@ async fn quota_error_fails_immediately_no_retry() {
         _ => panic!("task should fail with quota error"),
     }
     assert_eq!(probe.call_count(), 1);
+}
+
+#[tokio::test]
+async fn manual_retry_only_restarts_requested_failed_task() {
+    let (queue, store, mut events) = setup(MockOcr::failing(2, OcrError::Auth), 1).await;
+    for id in ["retry-me", "leave-failed"] {
+        queue.submit(NewTask {
+            id: id.into(),
+            service: ServiceId::Vl16,
+            input_path: format!("{id}.png"),
+            options_json: "{}".into(),
+        });
+    }
+    for _ in 0..2 {
+        assert!(matches!(
+            terminal(&mut events).await,
+            QueueEvent::Failed { .. }
+        ));
+    }
+
+    queue.retry("retry-me").unwrap();
+    assert!(matches!(
+        terminal(&mut events).await,
+        QueueEvent::Done { id } if id == "retry-me"
+    ));
+
+    let store = store.lock().unwrap();
+    assert_eq!(store.list_tasks(Some("done")).unwrap()[0].id, "retry-me");
+    assert_eq!(
+        store.list_tasks(Some("failed")).unwrap()[0].id,
+        "leave-failed"
+    );
 }
 
 #[tokio::test]

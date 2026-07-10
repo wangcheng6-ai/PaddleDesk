@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use anyhow::Result;
 use chrono::{Duration, Local};
 use rusqlite::{params, types::Type, Connection, OptionalExtension, Row, ToSql};
+use serde::Serialize;
 
 use crate::model::{OcrError, Page, RecognitionResult, ServiceId};
 
@@ -18,6 +19,7 @@ pub struct NewTask {
     pub options_json: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct TaskRow {
     pub id: String,
     pub service: ServiceId,
@@ -31,6 +33,7 @@ pub struct TaskRow {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct HistoryRow {
     pub task_id: String,
     pub file_name: String,
@@ -38,6 +41,7 @@ pub struct HistoryRow {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct UsageRow {
     pub date: String,
     pub service: ServiceId,
@@ -155,6 +159,36 @@ impl Store {
         Ok(changed == 1)
     }
 
+    pub fn retry_task(&self, id: &str) -> Result<Option<NewTask>> {
+        let transaction = self.0.unchecked_transaction()?;
+        let task = transaction
+            .query_row(
+                "SELECT id, service, input_path, options_json FROM tasks
+                 WHERE id = ?1 AND status = 'failed'",
+                [id],
+                |row| {
+                    Ok(NewTask {
+                        id: row.get(0)?,
+                        service: service_from_str(1, row.get(1)?)?,
+                        input_path: row.get(2)?,
+                        options_json: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?;
+        let Some(task) = task else {
+            transaction.rollback()?;
+            return Ok(None);
+        };
+        transaction.execute(
+            "UPDATE tasks SET status = 'pending', progress_page = 0, total_pages = 0,
+             error_kind = NULL, error_msg = NULL WHERE id = ?1",
+            [id],
+        )?;
+        transaction.commit()?;
+        Ok(Some(task))
+    }
+
     pub fn list_tasks(&self, status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
         let sql = format!("SELECT {TASK_COLUMNS} FROM tasks");
         match status_filter {
@@ -189,6 +223,7 @@ impl Store {
         result: &RecognitionResult,
         date: &str,
         service: ServiceId,
+        persist_result: bool,
     ) -> Result<bool> {
         let transaction = self.0.unchecked_transaction()?;
         let changed = transaction.execute(
@@ -200,7 +235,9 @@ impl Store {
             transaction.rollback()?;
             return Ok(false);
         }
-        write_result(&transaction, task_id, file_name, result)?;
+        if persist_result {
+            write_result(&transaction, task_id, file_name, result)?;
+        }
         write_usage(&transaction, date, service, result.page_count)?;
         transaction.commit()?;
         Ok(true)
@@ -257,6 +294,12 @@ impl Store {
         )?;
         let rows = statement.query_map([start], usage_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_settings(&self) -> Result<HashMap<String, String>> {
+        let mut statement = self.0.prepare("SELECT key, value FROM settings")?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
@@ -440,6 +483,45 @@ mod tests {
         assert_eq!(s.usage_since(1).unwrap()[0].pages, 8);
         s.set_setting("proxy_mode", "direct").unwrap();
         assert_eq!(s.get_setting("proxy_mode").unwrap().unwrap(), "direct");
+        s.set_setting("theme", "dark").unwrap();
+        assert_eq!(
+            s.get_settings().unwrap(),
+            std::collections::HashMap::from([
+                ("proxy_mode".to_string(), "direct".to_string()),
+                ("theme".to_string(), "dark".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn rows_serialize_for_ipc() {
+        let task = TaskRow {
+            id: "t1".into(),
+            service: ServiceId::Vl16,
+            status: "done".into(),
+            input_path: "a.png".into(),
+            options_json: "{}".into(),
+            progress_page: 1,
+            total_pages: 1,
+            error_kind: None,
+            error_msg: None,
+            created_at: 1,
+        };
+        let history = HistoryRow {
+            task_id: "t1".into(),
+            file_name: "a.png".into(),
+            snippet: "text".into(),
+            created_at: 1,
+        };
+        let usage = UsageRow {
+            date: "2026-07-10".into(),
+            service: ServiceId::Vl16,
+            pages: 1,
+        };
+
+        assert_eq!(serde_json::to_value(task).unwrap()["status"], "done");
+        assert_eq!(serde_json::to_value(history).unwrap()["file_name"], "a.png");
+        assert_eq!(serde_json::to_value(usage).unwrap()["pages"], 1);
     }
 
     #[tokio::test]
@@ -454,7 +536,14 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut services: HashMap<ServiceId, Arc<dyn OcrService>> = HashMap::new();
         services.insert(ServiceId::Vl16, Arc::new(MockOcr::new()));
-        let queue = Queue::new(store.clone(), services, 1, tx, StdDuration::from_millis(1));
+        let queue = Queue::new(
+            store.clone(),
+            services,
+            1,
+            tx,
+            StdDuration::from_millis(1),
+            true,
+        );
         queue.submit(NewTask {
             id: "broken".into(),
             service: ServiceId::Vl16,
@@ -506,6 +595,7 @@ mod tests {
                 &result,
                 &Local::now().date_naive().to_string(),
                 ServiceId::Vl16,
+                true,
             )
             .is_err());
         assert_eq!(s.list_tasks(None).unwrap()[0].status, "pending");

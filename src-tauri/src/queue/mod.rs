@@ -47,6 +47,7 @@ pub struct Queue {
     semaphore: Arc<Semaphore>,
     events: mpsc::UnboundedSender<QueueEvent>,
     retry_base: Duration,
+    persist_results: bool,
     active: Mutex<HashSet<String>>,
     #[cfg(test)]
     event_probe: Arc<Mutex<Option<TestProbe>>>,
@@ -61,6 +62,7 @@ impl Queue {
         concurrency: usize,
         events: mpsc::UnboundedSender<QueueEvent>,
         retry_base: Duration,
+        persist_results: bool,
     ) -> Arc<Queue> {
         Arc::new(Self {
             store,
@@ -68,6 +70,7 @@ impl Queue {
             semaphore: Arc::new(Semaphore::new(concurrency)),
             events,
             retry_base,
+            persist_results,
             active: Mutex::new(HashSet::new()),
             #[cfg(test)]
             event_probe: Arc::new(Mutex::new(None)),
@@ -131,6 +134,16 @@ impl Queue {
             Err(error) => error,
         };
         self.emit_failed(id, error);
+    }
+
+    pub fn retry(self: &Arc<Self>, id: &str) -> Result<(), OcrError> {
+        let task = {
+            let store = self.lock_store()?;
+            store.retry_task(id).map_err(storage_error)?
+        }
+        .ok_or_else(|| OcrError::Parse("task is not failed or does not exist".into()))?;
+        self.spawn(task);
+        Ok(())
     }
 
     fn spawn(self: &Arc<Self>, task: NewTask) {
@@ -267,7 +280,14 @@ impl Queue {
         let today = Local::now().date_naive().to_string();
         let error = match self.lock_store() {
             Ok(store) => {
-                match store.complete_task(&task.id, file_name, result, &today, task.service) {
+                match store.complete_task(
+                    &task.id,
+                    file_name,
+                    result,
+                    &today,
+                    task.service,
+                    self.persist_results,
+                ) {
                     Ok(true) => {
                         self.emit(QueueEvent::Done {
                             id: task.id.clone(),
